@@ -279,10 +279,9 @@ function detectedAgents() {
 }
 
 function suggestedAgents(detected) {
-  const agents = [];
-  if (detected.claudeCli || detected.claudeToken) agents.push("claude");
-  if (detected.codexCli || detected.codexAuth) agents.push("codex");
-  return agents.length ? agents.join(",") : "claude";
+  if (detected.claudeCli || detected.claudeToken) return "claude";
+  if (detected.codexCli || detected.codexAuth) return "codex";
+  return "claude";
 }
 
 function printDetection(detected) {
