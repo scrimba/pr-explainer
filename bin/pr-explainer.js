@@ -37,6 +37,39 @@ function run(cmd, args, options = {}) {
   return (res.stdout || "").trim();
 }
 
+function runClaudeSetupToken() {
+  const res = spawnSync("claude", ["setup-token"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`;
+  const token = extractClaudeToken(output);
+  if (token) return token;
+  if (res.error || res.status !== 0) {
+    return "";
+  }
+  return "";
+}
+
+function extractClaudeToken(output) {
+  const lines = output.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line.startsWith("sk-ant-oat")) continue;
+
+    let token = line;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const part = lines[j].trim();
+      if (!part) break;
+      if (!/^[A-Za-z0-9_-]+$/.test(part)) break;
+      token += part;
+    }
+
+    if (/^sk-ant-oat\d+-[A-Za-z0-9_-]+$/.test(token)) return token;
+  }
+  return "";
+}
+
 function commandExists(cmd) {
   return spawnSync("sh", ["-c", `command -v ${cmd} >/dev/null 2>&1`]).status === 0;
 }
@@ -207,9 +240,15 @@ async function collectClaudeAuth(detected) {
   }
 
   if (mode === "setup") {
-    run("claude", ["setup-token"], { stdio: "inherit" });
-    console.log("");
-    log.info("Paste the token from Claude so this installer can save it as a GitHub secret.");
+    const s = spinner();
+    s.start("Getting Claude token");
+    const token = runClaudeSetupToken();
+    if (token) {
+      s.stop("Claude token created");
+      return { token, source: "setup-token" };
+    }
+    s.error("Could not read a token from Claude Code");
+    log.warn("Run `claude setup-token` yourself, then paste the token below.");
   }
 
   const token = unwrapPrompt(await password({
@@ -351,7 +390,7 @@ async function init() {
   printDetection(detected);
 
   const suggested = suggestedAgents(detected);
-  note("We currently only support agents where you have an active subscription.", "Agent Support");
+  log.info("Note: we currently only support agents where you have an active subscription.");
   const agents = unwrapPrompt(await multiselect({
     message: "Which agent(s) do you want to use?",
     required: true,
@@ -369,7 +408,6 @@ async function init() {
       },
     ],
   }));
-  log.success(`Selected ${agents.join(", ")}`);
 
   const auth = {};
   if (agents.includes("claude")) {
