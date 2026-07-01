@@ -105,6 +105,19 @@ async function confirm(question, fallback = true) {
   return answer === "y" || answer === "yes";
 }
 
+async function choose(question, options, fallback) {
+  for (const option of options) {
+    field(option.value, option.label);
+  }
+
+  const allowed = new Set(options.map((option) => option.value));
+  while (true) {
+    const answer = await ask(question, fallback);
+    if (allowed.has(answer)) return answer;
+    warn(`Choose one of: ${[...allowed].join(", ")}`);
+  }
+}
+
 async function secretInput(question) {
   if (!input.isTTY) {
     return ask(question);
@@ -301,21 +314,28 @@ async function collectClaudeAuth(detected) {
 
   title("Claude Setup");
   description("Claude needs a Claude Code OAuth token so it can run inside GitHub Actions.");
-  description("You can paste a token you already have, create one yourself with `claude setup-token`, or let this installer run `claude setup-token` now.");
-  field("Token command", code("claude setup-token"));
-  field("GitHub secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
-  console.log("");
+  description("You can provide a token you already have, or let this installer get one through Claude Code.");
 
-  if (detected.claudeCli && await confirm("Run `claude setup-token` now?", true)) {
-    run("claude", ["setup-token"], { stdio: "inherit" });
-    console.log("");
-    description("If Claude printed a token, paste it below so this installer can save it as a GitHub secret.");
-  } else if (!detected.claudeCli) {
+  let mode = "provide";
+  if (detected.claudeCli) {
+    mode = await choose("Claude token setup", [
+      { value: "1", label: "Get token for me via Claude Code" },
+      { value: "2", label: "I will provide a token" },
+    ], "1");
+  } else {
     warn("Claude Code CLI was not found.");
-    description("Install Claude Code or run `claude setup-token` on a machine that has it, then set the GitHub secret.");
+    description("Paste a token you already have, or rerun this after installing Claude Code.");
   }
 
-  const token = await secretInput("CLAUDE_CODE_OAUTH_TOKEN (leave blank to set it yourself later)");
+  if (mode === "1") {
+    run("claude", ["setup-token"], { stdio: "inherit" });
+    console.log("");
+    description("Paste the token from Claude so this installer can save it as a GitHub secret.");
+  } else {
+    description("Paste your Claude Code OAuth token.");
+  }
+
+  const token = await secretInput("Claude token");
   if (token) {
     return { token, source: "prompt" };
   }
