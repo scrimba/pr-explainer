@@ -1,0 +1,32 @@
+name: Scrimba PR Explainer
+description: Create Scrimba explainers for pull requests with Claude Code, Codex, or both.
+
+inputs:
+  agents:
+    description: Comma-separated agents to run, e.g. claude,codex.
+    required: false
+    default: ""
+  agent:
+    description: Singular alias for agents, e.g. claude.
+    required: false
+    default: ""
+  pr-number:
+    description: PR number to explain when running manually.
+    required: false
+    default: ""
+  mcp-url:
+    description: Scrimba MCP URL.
+    required: false
+    default: https://scrimba.com/explain/mcp
+
+runs:
+  using: composite
+  steps:
+    - name: Run Scrimba PR Explainer
+      shell: bash
+      env:
+        SCRIMBA_PR_EXPLAINER_INPUT_AGENTS: ${{ inputs.agents }}
+        SCRIMBA_PR_EXPLAINER_INPUT_AGENT: ${{ inputs.agent }}
+        SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+        SCRIMBA_PR_EXPLAINER_MCP_URL: ${{ inputs.mcp-url }}
+      run: "$GITHUB_ACTION_PATH/scripts/run-action.sh"

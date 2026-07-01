@@ -1,0 +1,24 @@
+{
+  "name": "@scrimba/pr-explainer",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Create Scrimba PR explainers from GitHub Actions using Claude Code, Codex, or both.",
+  "bin": {
+    "pr-explainer": "./bin/pr-explainer.js"
+  },
+  "files": [
+    "action.yml",
+    "bin",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node --check bin/pr-explainer.js && bash -n scripts/run-action.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
