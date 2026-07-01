@@ -18,7 +18,10 @@
     "check": "node --check bin/pr-explainer.js && bash -n scripts/run-action.sh"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^1.6.0"
+  }
 }

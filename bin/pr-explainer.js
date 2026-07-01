@@ -3,72 +3,23 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import {
+  cancel,
+  confirm,
+  intro,
+  isCancel,
+  log,
+  multiselect,
+  note,
+  outro,
+  password,
+  select,
+  spinner,
+} from "@clack/prompts";
 
 const WORKFLOW_PATH = ".github/workflows/scrimba-pr-explainer.yml";
 const ACTION_REF = "scrimba/pr-explainer@main";
 const CODEX_AUTH_PATH = join(homedir(), ".codex", "auth.json");
-
-const colors = {
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  cyan: "\x1b[36m",
-  blue: "\x1b[34m",
-  reset: "\x1b[0m",
-};
-
-function color(code, text) {
-  return output.isTTY ? `${code}${text}${colors.reset}` : text;
-}
-
-function title(text) {
-  console.log("");
-  console.log(color(colors.bold, color(colors.cyan, text)));
-}
-
-function description(text) {
-  console.log(color(colors.dim, text));
-}
-
-function label(text) {
-  return color(colors.blue, text);
-}
-
-function value(text) {
-  return color(colors.green, text);
-}
-
-function code(text) {
-  return color(colors.yellow, text);
-}
-
-function field(name, val) {
-  console.log(`  ${label(`${name}:`)} ${val}`);
-}
-
-function statusValue(present, presentText = "found", missingText = "not found") {
-  return present ? value(presentText) : color(colors.yellow, missingText);
-}
-
-function info(text) {
-  console.log(`${color(colors.cyan, "[i]")} ${text}`);
-}
-
-function ok(text) {
-  console.log(`${color(colors.green, "[ok]")} ${text}`);
-}
-
-function warn(text) {
-  console.log(`${color(colors.yellow, "[!]")} ${text}`);
-}
-
-function fail(text) {
-  console.log(`${color(colors.red, "[x]")} ${text}`);
-}
 
 function run(cmd, args, options = {}) {
   const res = spawnSync(cmd, args, {
@@ -90,87 +41,16 @@ function commandExists(cmd) {
   return spawnSync("sh", ["-c", `command -v ${cmd} >/dev/null 2>&1`]).status === 0;
 }
 
-async function ask(question, fallback = "") {
-  const rl = readline.createInterface({ input, output });
-  const suffix = fallback ? ` ${color(colors.dim, `[default: ${fallback}]`)}` : "";
-  const answer = (await rl.question(`${color(colors.cyan, "?")} ${color(colors.bold, question)}${suffix}\n${color(colors.dim, "> ")}`)).trim();
-  rl.close();
-  return answer || fallback;
+function unwrapPrompt(value) {
+  if (isCancel(value)) {
+    cancel("Installation cancelled.");
+    process.exit(0);
+  }
+  return value;
 }
 
-async function confirm(question, fallback = true) {
-  const hint = fallback ? "Y/n" : "y/N";
-  const answer = (await ask(`${question} ${color(colors.dim, `[${hint}]`)}`, "")).toLowerCase();
-  if (!answer) return fallback;
-  return answer === "y" || answer === "yes";
-}
-
-async function choose(question, options, fallback) {
-  for (const option of options) {
-    field(option.value, option.label);
-  }
-
-  const allowed = new Set(options.map((option) => option.value));
-  while (true) {
-    const answer = await ask(question, fallback);
-    if (allowed.has(answer)) return answer;
-    warn(`Choose one of: ${[...allowed].join(", ")}`);
-  }
-}
-
-async function secretInput(question) {
-  if (!input.isTTY) {
-    return ask(question);
-  }
-
-  output.write(`${color(colors.cyan, "?")} ${color(colors.bold, question)}\n${color(colors.dim, "> ")}`);
-  input.setRawMode(true);
-  input.resume();
-  input.setEncoding("utf8");
-
-  let value = "";
-  return await new Promise((resolve) => {
-    const onData = (char) => {
-      if (char === "\u0003") {
-        output.write("\n");
-        process.exit(130);
-      }
-      if (char === "\r" || char === "\n") {
-        input.setRawMode(false);
-        input.off("data", onData);
-        output.write("\n");
-        resolve(value.trim());
-        return;
-      }
-      if (char === "\u007f") {
-        value = value.slice(0, -1);
-        return;
-      }
-      value += char;
-      output.write("*");
-    };
-    input.on("data", onData);
-  });
-}
-
-function normalizeAgents(value) {
-  const seen = new Set();
-  const agents = [];
-  for (const raw of value.toLowerCase().replace(/[&;\s]+/g, ",").split(",")) {
-    const agent = raw.trim();
-    if (!agent) continue;
-    if (!["claude", "codex"].includes(agent)) {
-      throw new Error(`Unsupported agent "${agent}". Supported agents: claude, codex.`);
-    }
-    if (!seen.has(agent)) {
-      seen.add(agent);
-      agents.push(agent);
-    }
-  }
-  if (!agents.length) {
-    throw new Error("No agents selected.");
-  }
-  return agents;
+function formatRows(rows) {
+  return rows.map(([key, val]) => `${key.padEnd(18)} ${val}`).join("\n");
 }
 
 function workflowYaml() {
@@ -298,12 +178,12 @@ function suggestedAgents(detected) {
 }
 
 function printDetection(detected) {
-  title("Detected");
-  description("Local tools and auth that can be used to configure the GitHub Action.");
-  field("Claude Code CLI", statusValue(detected.claudeCli));
-  field("Claude token env", statusValue(detected.claudeToken, "set", "not set"));
-  field("Codex CLI", statusValue(detected.codexCli));
-  field("Codex auth file", statusValue(detected.codexAuth, "~/.codex/auth.json", "not found"));
+  note(formatRows([
+    ["Claude Code CLI", detected.claudeCli ? "found" : "not found"],
+    ["Claude token env", detected.claudeToken ? "set" : "not set"],
+    ["Codex CLI", detected.codexCli ? "found" : "not found"],
+    ["Codex auth file", detected.codexAuth ? "~/.codex/auth.json" : "not found"],
+  ]), "Detected");
 }
 
 async function collectClaudeAuth(detected) {
@@ -312,35 +192,37 @@ async function collectClaudeAuth(detected) {
     return { token: envToken, source: "environment" };
   }
 
-  title("Claude Setup");
-  description("Claude needs a Claude Code OAuth token so it can run inside GitHub Actions.");
-  description("You can provide a token you already have, or let this installer get one through Claude Code.");
+  note("Claude needs a Claude Code OAuth token so it can run inside GitHub Actions.\n\nYou can provide a token you already have, or let this installer get one through Claude Code.", "Claude Setup");
 
   let mode = "provide";
   if (detected.claudeCli) {
-    mode = await choose("Claude token setup", [
-      { value: "1", label: "Get token for me via Claude Code" },
-      { value: "2", label: "I will provide a token" },
-    ], "1");
+    mode = unwrapPrompt(await select({
+      message: "How should we get the Claude token?",
+      initialValue: "setup",
+      options: [
+        { value: "setup", label: "Get token for me via Claude Code" },
+        { value: "provide", label: "I will provide a token" },
+      ],
+    }));
   } else {
-    warn("Claude Code CLI was not found.");
-    description("Paste a token you already have, or rerun this after installing Claude Code.");
+    log.warn("Claude Code CLI was not found. Paste a token you already have, or rerun this after installing Claude Code.");
   }
 
-  if (mode === "1") {
+  if (mode === "setup") {
     run("claude", ["setup-token"], { stdio: "inherit" });
     console.log("");
-    description("Paste the token from Claude so this installer can save it as a GitHub secret.");
-  } else {
-    description("Paste your Claude Code OAuth token.");
+    log.info("Paste the token from Claude so this installer can save it as a GitHub secret.");
   }
 
-  const token = await secretInput("Claude token");
+  const token = unwrapPrompt(await password({
+    message: "Claude token",
+    mask: "*",
+  })).trim();
   if (token) {
     return { token, source: "prompt" };
   }
 
-  warn("Claude selected without a token. The workflow will still be written, but Claude runs need the secret before they can work.");
+  log.warn("Claude selected without a token. The workflow will still be written, but Claude runs need the secret before they can work.");
   return { token: "", source: "manual" };
 }
 
@@ -350,16 +232,17 @@ async function collectCodexAuth() {
     return envAuth;
   }
 
-  title("Codex Setup");
-  description("Codex in GitHub Actions uses a base64 copy of your local Codex auth file.");
-  field("Login command", code("codex login --device-auth"));
-  field("Auth file", code("~/.codex/auth.json"));
+  note("Codex in GitHub Actions uses a base64 copy of your local Codex auth file.", "Codex Setup");
   if (!existsSync(CODEX_AUTH_PATH)) {
     if (!commandExists("codex")) {
       throw new Error("Codex was selected, but the codex CLI is not installed and ~/.codex/auth.json was not found.");
     }
-    warn("Codex auth was not found at ~/.codex/auth.json.");
-    if (await confirm("Run `codex login --device-auth` now?", true)) {
+    log.warn("Codex auth was not found at ~/.codex/auth.json.");
+    const shouldLogin = unwrapPrompt(await confirm({
+      message: "Run `codex login --device-auth` now?",
+      initialValue: true,
+    }));
+    if (shouldLogin) {
       run("codex", ["login", "--device-auth"], { stdio: "inherit" });
     }
   }
@@ -372,74 +255,86 @@ async function collectCodexAuth() {
 }
 
 async function configureGitHub(repo, agents, auth) {
-  title("GitHub Repository Settings");
-  description("The workflow reads these repository settings at runtime. The installer can set them with GitHub CLI after you confirm.");
-  field("Repository", value(repo));
-  console.log("");
-  console.log(label("Planned settings"));
-  field("Variable", code(`SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`));
+  const settings = [
+    ["Repository", repo],
+    ["Variable", `SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`],
+  ];
   if (agents.includes("claude") && auth.claude?.token) {
-    field("Secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
+    settings.push(["Secret", "SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"]);
   } else if (agents.includes("claude")) {
-    field("Manual secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
+    settings.push(["Manual secret", "SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"]);
   }
   if (agents.includes("codex")) {
-    field("Secret", code("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64"));
+    settings.push(["Secret", "SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64"]);
   }
-  console.log("");
 
-  const shouldSet = await confirm("Set available GitHub secrets and variables now?", true);
+  note("The workflow reads these repository settings at runtime. The installer can set available settings with GitHub CLI after you confirm.\n\n" + formatRows(settings), "GitHub Repository Settings");
+
+  const shouldSet = unwrapPrompt(await confirm({
+    message: "Set available GitHub secrets and variables now?",
+    initialValue: true,
+  }));
   if (!shouldSet) {
-    warn("Skipped GitHub settings.");
+    log.warn("Skipped GitHub settings.");
     console.log("");
-    console.log(label("Run these manually"));
+    log.info("Run these manually:");
     printManualGitHubCommands(agents, auth);
     return;
   }
 
-  setVariable("SCRIMBA_PR_EXPLAINER_AGENTS", agents.join(","));
-  ok(`Set variable SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`);
-
-  if (agents.includes("claude") && auth.claude?.token) {
-    setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.claude.token);
-    ok("Set secret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
-  } else if (agents.includes("claude")) {
-    warn("Claude token was not provided, so SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN was not set.");
-    console.log(label("Run this when you have a token"));
-    console.log("  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+  const s = spinner();
+  s.start("Setting GitHub repository settings");
+  try {
+    setVariable("SCRIMBA_PR_EXPLAINER_AGENTS", agents.join(","));
+    if (agents.includes("claude") && auth.claude?.token) {
+      setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.claude.token);
+    }
+    if (agents.includes("codex")) {
+      setSecret("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64", auth.codexAuthB64);
+    }
+    s.stop("GitHub repository settings updated");
+  } catch (error) {
+    s.error("Failed to set GitHub repository settings");
+    throw error;
   }
-  if (agents.includes("codex")) {
-    setSecret("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64", auth.codexAuthB64);
-    ok("Set secret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64");
+
+  if (agents.includes("claude") && !auth.claude?.token) {
+    log.warn("Claude token was not provided, so SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN was not set.");
+    log.info("Run this when you have a token:\n  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
   }
 
-  if (await confirm("Allow PR explainers to run on fork PRs?", false)) {
+  const allowForks = unwrapPrompt(await confirm({
+    message: "Allow PR explainers to run on fork PRs?",
+    initialValue: false,
+  }));
+  if (allowForks) {
     setVariable("SCRIMBA_PR_EXPLAINER_ALLOW_FORKS", "true");
-    ok("Set variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true");
+    log.success("Set variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true");
   }
 }
 
 async function writeWorkflow() {
-  title("Workflow");
-  description("The workflow file is generated locally. Review it, then commit it when you are ready.");
-  field("Path", code(WORKFLOW_PATH));
+  note(`The workflow file is generated locally. Review it, then commit it when you are ready.\n\nPath              ${WORKFLOW_PATH}`, "Workflow");
   if (existsSync(WORKFLOW_PATH)) {
-    const overwrite = await confirm(`${WORKFLOW_PATH} already exists. Overwrite?`, false);
+    const overwrite = unwrapPrompt(await confirm({
+      message: `${WORKFLOW_PATH} already exists. Overwrite?`,
+      initialValue: false,
+    }));
     if (!overwrite) {
-      warn("Skipped workflow write.");
+      log.warn("Skipped workflow write.");
       return false;
     }
   }
 
   mkdirSync(dirname(WORKFLOW_PATH), { recursive: true });
   writeFileSync(WORKFLOW_PATH, workflowYaml());
-  ok(`Wrote ${WORKFLOW_PATH}`);
+  log.success(`Wrote ${WORKFLOW_PATH}`);
   return true;
 }
 
 async function init() {
-  title("Scrimba PR Explainer");
-  description("This adds a GitHub Action that comments on PRs with Scrimba explainer links.");
+  intro("Scrimba PR Explainer");
+  log.info("This adds a GitHub Action that comments on PRs with Scrimba explainer links.");
 
   if (!commandExists("git")) {
     throw new Error("git is required. Run init from a local checkout of the repository.");
@@ -457,15 +352,25 @@ async function init() {
   const detected = detectedAgents();
   printDetection(detected);
 
-  title("Agents");
-  description("Choose one or more agents. Multiple agents run in parallel and each gets its own explainer link in the PR comment.");
-  field("Supported", `${code("claude")}, ${code("codex")}`);
-  field("One agent", code("claude"));
-  field("Multiple agents", `${code("claude,codex")} or ${code("claude codex")}`);
   const suggested = suggestedAgents(detected);
-  field("Default", code(suggested));
-  const agents = normalizeAgents(await ask("Agents to run", suggested));
-  field("Selected", value(agents.join(",")));
+  const agents = unwrapPrompt(await multiselect({
+    message: "Choose one or more agents to run in parallel.",
+    required: true,
+    initialValues: [suggested],
+    options: [
+      {
+        value: "claude",
+        label: "Claude Code",
+        hint: detected.claudeCli || detected.claudeToken ? "available" : "token required",
+      },
+      {
+        value: "codex",
+        label: "Codex",
+        hint: detected.codexCli || detected.codexAuth ? "available" : "auth required",
+      },
+    ],
+  }));
+  log.success(`Selected ${agents.join(", ")}`);
 
   const auth = {};
   if (agents.includes("claude")) {
@@ -478,12 +383,8 @@ async function init() {
   await configureGitHub(repo, agents, auth);
   await writeWorkflow();
 
-  title("Done");
-  description("The installer is finished. It did not commit anything.");
-  console.log(label("Next commands"));
-  console.log(`  git add ${WORKFLOW_PATH}`);
-  console.log('  git commit -m "Add Scrimba PR Explainer"');
-  console.log("  git push");
+  note(`git add ${WORKFLOW_PATH}\ngit commit -m "Add Scrimba PR Explainer"\ngit push`, "Next commands");
+  outro("Done. The installer did not commit anything.");
 }
 
 async function main() {
@@ -499,6 +400,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  fail(error.message || String(error));
+  log.error(error.message || String(error));
   process.exit(1);
 });
