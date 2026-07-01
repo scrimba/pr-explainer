@@ -17,6 +17,7 @@ const colors = {
   yellow: "\x1b[33m",
   red: "\x1b[31m",
   cyan: "\x1b[36m",
+  blue: "\x1b[34m",
   reset: "\x1b[0m",
 };
 
@@ -26,7 +27,31 @@ function color(code, text) {
 
 function title(text) {
   console.log("");
-  console.log(color(colors.bold, text));
+  console.log(color(colors.bold, color(colors.cyan, text)));
+}
+
+function description(text) {
+  console.log(color(colors.dim, text));
+}
+
+function label(text) {
+  return color(colors.blue, text);
+}
+
+function value(text) {
+  return color(colors.green, text);
+}
+
+function code(text) {
+  return color(colors.yellow, text);
+}
+
+function field(name, val) {
+  console.log(`  ${label(`${name}:`)} ${val}`);
+}
+
+function statusValue(present, presentText = "found", missingText = "not found") {
+  return present ? value(presentText) : color(colors.yellow, missingText);
 }
 
 function info(text) {
@@ -67,15 +92,15 @@ function commandExists(cmd) {
 
 async function ask(question, fallback = "") {
   const rl = readline.createInterface({ input, output });
-  const suffix = fallback ? color(colors.dim, ` (${fallback})`) : "";
-  const answer = (await rl.question(`${question}${suffix}: `)).trim();
+  const suffix = fallback ? ` ${color(colors.dim, `[default: ${fallback}]`)}` : "";
+  const answer = (await rl.question(`${color(colors.cyan, "?")} ${color(colors.bold, question)}${suffix}\n${color(colors.dim, "> ")}`)).trim();
   rl.close();
   return answer || fallback;
 }
 
 async function confirm(question, fallback = true) {
   const hint = fallback ? "Y/n" : "y/N";
-  const answer = (await ask(`${question} [${hint}]`, "")).toLowerCase();
+  const answer = (await ask(`${question} ${color(colors.dim, `[${hint}]`)}`, "")).toLowerCase();
   if (!answer) return fallback;
   return answer === "y" || answer === "yes";
 }
@@ -85,7 +110,7 @@ async function secretInput(question) {
     return ask(question);
   }
 
-  output.write(`${question}: `);
+  output.write(`${color(colors.cyan, "?")} ${color(colors.bold, question)}\n${color(colors.dim, "> ")}`);
   input.setRawMode(true);
   input.resume();
   input.setEncoding("utf8");
@@ -262,10 +287,11 @@ function suggestedAgents(detected) {
 
 function printDetection(detected) {
   title("Detected");
-  detected.claudeCli ? ok("Claude Code CLI found") : warn("Claude Code CLI not found");
-  detected.claudeToken ? ok("Claude token found in environment") : info("Claude token not found in environment");
-  detected.codexCli ? ok("Codex CLI found") : warn("Codex CLI not found");
-  detected.codexAuth ? ok("Codex auth found at ~/.codex/auth.json") : info("Codex auth not found at ~/.codex/auth.json");
+  description("Local tools and auth that can be used to configure the GitHub Action.");
+  field("Claude Code CLI", statusValue(detected.claudeCli));
+  field("Claude token env", statusValue(detected.claudeToken, "set", "not set"));
+  field("Codex CLI", statusValue(detected.codexCli));
+  field("Codex auth file", statusValue(detected.codexAuth, "~/.codex/auth.json", "not found"));
 }
 
 async function collectClaudeAuth(detected) {
@@ -275,16 +301,18 @@ async function collectClaudeAuth(detected) {
   }
 
   title("Claude Setup");
-  console.log("Claude in GitHub Actions needs a Claude Code OAuth token stored as a repo secret.");
-  console.log("You can create one with `claude setup-token`, or provide a token you already created.");
+  description("Claude in GitHub Actions needs a Claude Code OAuth token stored as a repository secret.");
+  field("Create token", code("claude setup-token"));
+  field("GitHub secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
   console.log("");
 
   if (detected.claudeCli && await confirm("Run `claude setup-token` now?", true)) {
     run("claude", ["setup-token"], { stdio: "inherit" });
     console.log("");
-    console.log("If Claude printed a token, paste it below so this installer can save it as a GitHub secret.");
+    description("If Claude printed a token, paste it below so this installer can save it as a GitHub secret.");
   } else if (!detected.claudeCli) {
-    console.log("Install Claude Code or run `claude setup-token` on a machine that has it, then set the GitHub secret.");
+    warn("Claude Code CLI was not found.");
+    description("Install Claude Code or run `claude setup-token` on a machine that has it, then set the GitHub secret.");
   }
 
   const token = await secretInput("CLAUDE_CODE_OAUTH_TOKEN (leave blank to set it yourself later)");
@@ -303,11 +331,14 @@ async function collectCodexAuth() {
   }
 
   title("Codex Setup");
+  description("Codex in GitHub Actions uses a base64 copy of your local Codex auth file.");
+  field("Login command", code("codex login --device-auth"));
+  field("Auth file", code("~/.codex/auth.json"));
   if (!existsSync(CODEX_AUTH_PATH)) {
     if (!commandExists("codex")) {
       throw new Error("Codex was selected, but the codex CLI is not installed and ~/.codex/auth.json was not found.");
     }
-    console.log("Codex auth was not found at ~/.codex/auth.json.");
+    warn("Codex auth was not found at ~/.codex/auth.json.");
     if (await confirm("Run `codex login --device-auth` now?", true)) {
       run("codex", ["login", "--device-auth"], { stdio: "inherit" });
     }
@@ -322,17 +353,18 @@ async function collectCodexAuth() {
 
 async function configureGitHub(repo, agents, auth) {
   title("GitHub Repository Settings");
-  console.log(`Repository: ${repo}`);
+  description("The workflow reads these repository settings at runtime. The installer can set them with GitHub CLI after you confirm.");
+  field("Repository", value(repo));
   console.log("");
-  console.log("The installer can set these for you with GitHub CLI:");
-  console.log(`  variable SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`);
+  console.log(label("Planned settings"));
+  field("Variable", code(`SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`));
   if (agents.includes("claude") && auth.claude?.token) {
-    console.log("  secret   SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+    field("Secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
   } else if (agents.includes("claude")) {
-    console.log("  manual   SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+    field("Manual secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
   }
   if (agents.includes("codex")) {
-    console.log("  secret   SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64");
+    field("Secret", code("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64"));
   }
   console.log("");
 
@@ -340,7 +372,7 @@ async function configureGitHub(repo, agents, auth) {
   if (!shouldSet) {
     warn("Skipped GitHub settings.");
     console.log("");
-    console.log("Run these manually:");
+    console.log(label("Run these manually"));
     printManualGitHubCommands(agents, auth);
     return;
   }
@@ -353,7 +385,7 @@ async function configureGitHub(repo, agents, auth) {
     ok("Set secret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
   } else if (agents.includes("claude")) {
     warn("Claude token was not provided, so SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN was not set.");
-    console.log("Run this when you have a token:");
+    console.log(label("Run this when you have a token"));
     console.log("  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
   }
   if (agents.includes("codex")) {
@@ -369,6 +401,8 @@ async function configureGitHub(repo, agents, auth) {
 
 async function writeWorkflow() {
   title("Workflow");
+  description("The workflow file is generated locally. Review it, then commit it when you are ready.");
+  field("Path", code(WORKFLOW_PATH));
   if (existsSync(WORKFLOW_PATH)) {
     const overwrite = await confirm(`${WORKFLOW_PATH} already exists. Overwrite?`, false);
     if (!overwrite) {
@@ -385,8 +419,9 @@ async function writeWorkflow() {
 
 async function init() {
   title("Scrimba PR Explainer");
-  console.log("This will add a GitHub Action that comments on PRs with Scrimba explainer links.");
-  console.log("It can run Claude Code, Codex, or both.");
+  description("This adds a GitHub Action that comments on PRs with Scrimba explainer links.");
+  field("Agents", `${code("claude")}, ${code("codex")}, or both`);
+  field("Action ref", code(ACTION_REF));
 
   if (!commandExists("git")) {
     throw new Error("git is required. Run init from a local checkout of the repository.");
@@ -405,9 +440,14 @@ async function init() {
   printDetection(detected);
 
   title("Agents");
-  console.log("Choose one or more agents. Multiple agents run in parallel and each gets its own explainer link in the PR comment.");
-  const agents = normalizeAgents(await ask("Agents to run", suggestedAgents(detected)));
-  ok(`Selected ${agents.join(",")}`);
+  description("Choose one or more agents. Multiple agents run in parallel and each gets its own explainer link in the PR comment.");
+  field("Supported", `${code("claude")}, ${code("codex")}`);
+  field("One agent", code("claude"));
+  field("Multiple agents", `${code("claude,codex")} or ${code("claude codex")}`);
+  const suggested = suggestedAgents(detected);
+  field("Recommended", code(suggested));
+  const agents = normalizeAgents(await ask("Agents to run", suggested));
+  field("Selected", value(agents.join(",")));
 
   const auth = {};
   if (agents.includes("claude")) {
@@ -421,7 +461,8 @@ async function init() {
   await writeWorkflow();
 
   title("Done");
-  console.log("Next:");
+  description("The installer is finished. It did not commit anything.");
+  console.log(label("Next commands"));
   console.log(`  git add ${WORKFLOW_PATH}`);
   console.log('  git commit -m "Add Scrimba PR Explainer"');
   console.log("  git push");
