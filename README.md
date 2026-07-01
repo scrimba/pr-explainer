@@ -252,10 +252,23 @@ npm run check
 npm pack --dry-run
 ```
 
-For a stable public release, move the generated workflow and docs from `@main` to `@v1`, then publish both the GitHub Action ref and the npm package:
+Publish the npm init command:
 
 ```bash
-git tag -f v1
-git push origin main v1 --force
+npm login
 npm publish --access public
+```
+
+After publishing, verify the public installer:
+
+```bash
+npx @scrimba/pr-explainer init
+```
+
+Publish the GitHub Action ref documented in this README:
+
+```bash
+git push origin main
+git tag -f <ref>
+git push origin <ref> --force
 ```
