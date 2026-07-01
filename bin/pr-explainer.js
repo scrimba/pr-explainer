@@ -300,8 +300,9 @@ async function collectClaudeAuth(detected) {
   }
 
   title("Claude Setup");
-  description("Claude in GitHub Actions needs a Claude Code OAuth token stored as a repository secret.");
-  field("Create token", code("claude setup-token"));
+  description("Claude needs a Claude Code OAuth token so it can run inside GitHub Actions.");
+  description("You can paste a token you already have, create one yourself with `claude setup-token`, or let this installer run `claude setup-token` now.");
+  field("Token command", code("claude setup-token"));
   field("GitHub secret", code("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"));
   console.log("");
 
