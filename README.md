@@ -11,12 +11,6 @@ cd your-repo
 npx @scrimba/pr-explainer init
 ```
 
-If you are testing from GitHub before the npm package is published:
-
-```bash
-npx github:scrimba/pr-explainer init
-```
-
 The init command:
 
 - detects the current GitHub repo with `gh`
@@ -94,7 +88,7 @@ jobs:
         with:
           node-version: 22
 
-      - uses: scrimba/pr-explainer@main
+      - uses: scrimba/pr-explainer@<ref>
         with:
           agents: ${{ vars.SCRIMBA_PR_EXPLAINER_AGENTS }}
         env:
@@ -104,6 +98,8 @@ jobs:
 ```
 
 Use `npx @scrimba/pr-explainer init` for the full workflow, including manual PR selection, fork protection, concurrency, and MCP URL configuration.
+
+Replace `<ref>` with the action ref you want to run, such as `main` while testing unreleased changes or a versioned ref after release.
 
 ## Agent Setup
 
@@ -155,7 +151,7 @@ The init command can run the Codex login flow and set this secret for you.
 
 ## Action Inputs
 
-These are `with:` inputs on `uses: scrimba/pr-explainer@main`.
+These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
 
 | Input | Default | Description |
 |---|---:|---|
@@ -251,6 +247,14 @@ Validate the action and CLI:
 npm run check
 npm pack --dry-run
 ```
+
+Test unreleased changes from GitHub:
+
+```bash
+npx github:scrimba/pr-explainer init
+```
+
+During development, the installer may generate workflows that use `scrimba/pr-explainer@main`. For a stable release, use a versioned action ref such as `scrimba/pr-explainer@v1`.
 
 Publish the npm init command:
 
