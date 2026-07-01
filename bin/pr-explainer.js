@@ -10,7 +10,6 @@ import {
   isCancel,
   log,
   multiselect,
-  note,
   outro,
   password,
   select,
@@ -80,10 +79,6 @@ function unwrapPrompt(value) {
     process.exit(0);
   }
   return value;
-}
-
-function formatRows(rows) {
-  return rows.map(([key, val]) => `${key.padEnd(18)} ${val}`).join("\n");
 }
 
 function workflowYaml() {
@@ -210,11 +205,11 @@ function suggestedAgents(detected) {
   return "claude";
 }
 
-function printDetection(detected) {
+function detectedAgentNames(detected) {
   const found = [];
   if (detected.claudeCli || detected.claudeToken) found.push("claude");
   if (detected.codexCli || detected.codexAuth) found.push("codex");
-  log.info(`Detected: ${found.length ? found.join(", ") : "none"}`);
+  return found.length ? found.join(", ") : "none";
 }
 
 async function collectClaudeAuth(detected) {
@@ -223,15 +218,13 @@ async function collectClaudeAuth(detected) {
     return { token: envToken, source: "environment" };
   }
 
-  note("Claude needs a Claude Code OAuth token so it can run inside GitHub Actions.\n\nYou can provide a token you already have, or let this installer get one through Claude Code.", "Claude Setup");
-
   let mode = "provide";
   if (detected.claudeCli) {
     mode = unwrapPrompt(await select({
-      message: "How should we get the Claude token?",
+      message: "Claude needs an OAuth token in GitHub Actions. How should we get it?",
       initialValue: "setup",
       options: [
-        { value: "setup", label: "Get token for me via Claude Code" },
+        { value: "setup", label: "Get token via Claude Code" },
         { value: "provide", label: "I will provide a token" },
       ],
     }));
@@ -269,7 +262,6 @@ async function collectCodexAuth() {
     return envAuth;
   }
 
-  note("Codex in GitHub Actions uses a base64 copy of your local Codex auth file.", "Codex Setup");
   if (!existsSync(CODEX_AUTH_PATH)) {
     if (!commandExists("codex")) {
       throw new Error("Codex was selected, but the codex CLI is not installed and ~/.codex/auth.json was not found.");
@@ -292,23 +284,8 @@ async function collectCodexAuth() {
 }
 
 async function configureGitHub(repo, agents, auth) {
-  const settings = [
-    ["Repository", repo],
-    ["Variable", `SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`],
-  ];
-  if (agents.includes("claude") && auth.claude?.token) {
-    settings.push(["Secret", "SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"]);
-  } else if (agents.includes("claude")) {
-    settings.push(["Manual secret", "SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"]);
-  }
-  if (agents.includes("codex")) {
-    settings.push(["Secret", "SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64"]);
-  }
-
-  note("The workflow reads these repository settings at runtime. The installer can set available settings with GitHub CLI after you confirm.\n\n" + formatRows(settings), "GitHub Repository Settings");
-
   const shouldSet = unwrapPrompt(await confirm({
-    message: "Set available GitHub secrets and variables now?",
+    message: `Set GitHub secrets and variables on ${repo} now?`,
     initialValue: true,
   }));
   if (!shouldSet) {
@@ -351,7 +328,6 @@ async function configureGitHub(repo, agents, auth) {
 }
 
 async function writeWorkflow() {
-  note(`The workflow file is generated locally. Review it, then commit it when you are ready.\n\nPath              ${WORKFLOW_PATH}`, "Workflow");
   if (existsSync(WORKFLOW_PATH)) {
     const overwrite = unwrapPrompt(await confirm({
       message: `${WORKFLOW_PATH} already exists. Overwrite?`,
@@ -371,7 +347,6 @@ async function writeWorkflow() {
 
 async function init() {
   intro("Scrimba PR Explainer");
-  log.info("This adds a GitHub Action that comments on PRs with Scrimba explainer links.");
 
   if (!commandExists("git")) {
     throw new Error("git is required. Run init from a local checkout of the repository.");
@@ -387,10 +362,9 @@ async function init() {
 
   const repo = detectRepo();
   const detected = detectedAgents();
-  printDetection(detected);
+  log.info(`Installs a PR explainer workflow. Detected: ${detectedAgentNames(detected)}. Subscription required.`);
 
   const suggested = suggestedAgents(detected);
-  log.info("Note: we currently only support agents where you have an active subscription.");
   const agents = unwrapPrompt(await multiselect({
     message: "Which agent(s) do you want to use?",
     required: true,
@@ -420,8 +394,8 @@ async function init() {
   await configureGitHub(repo, agents, auth);
   await writeWorkflow();
 
-  note(`git add ${WORKFLOW_PATH}\ngit commit -m "Add Scrimba PR Explainer"\ngit push`, "Next commands");
-  outro("Done. The installer did not commit anything.");
+  log.info(`Next:\n  git add ${WORKFLOW_PATH}\n  git commit -m "Add Scrimba PR Explainer"\n  git push`);
+  outro("Done. No files were committed.");
 }
 
 async function main() {
