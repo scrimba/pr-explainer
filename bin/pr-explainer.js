@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   cancel,
   confirm,
@@ -37,17 +37,27 @@ function run(cmd, args, options = {}) {
 }
 
 function runClaudeSetupToken() {
-  const res = spawnSync("claude", ["setup-token"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+  return new Promise((resolve) => {
+    const child = spawn("claude", ["setup-token"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      output += chunk;
+    });
+    child.stderr?.on("data", (chunk) => {
+      output += chunk;
+    });
+    child.on("error", () => {
+      resolve("");
+    });
+    child.on("close", () => {
+      resolve(extractClaudeToken(output));
+    });
   });
-  const output = `${res.stdout || ""}\n${res.stderr || ""}`;
-  const token = extractClaudeToken(output);
-  if (token) return token;
-  if (res.error || res.status !== 0) {
-    return "";
-  }
-  return "";
 }
 
 function extractClaudeToken(output) {
@@ -235,7 +245,7 @@ async function collectClaudeAuth(detected) {
   if (mode === "setup") {
     const s = spinner();
     s.start("Getting Claude token");
-    const token = runClaudeSetupToken();
+    const token = await runClaudeSetupToken();
     if (token) {
       s.stop("Claude token created");
       return { token, source: "setup-token" };
