@@ -178,12 +178,10 @@ function suggestedAgents(detected) {
 }
 
 function printDetection(detected) {
-  note(formatRows([
-    ["Claude Code CLI", detected.claudeCli ? "found" : "not found"],
-    ["Claude token env", detected.claudeToken ? "set" : "not set"],
-    ["Codex CLI", detected.codexCli ? "found" : "not found"],
-    ["Codex auth file", detected.codexAuth ? "~/.codex/auth.json" : "not found"],
-  ]), "Detected");
+  const found = [];
+  if (detected.claudeCli || detected.claudeToken) found.push("claude");
+  if (detected.codexCli || detected.codexAuth) found.push("codex");
+  log.info(`Detected: ${found.length ? found.join(", ") : "none"}`);
 }
 
 async function collectClaudeAuth(detected) {
@@ -353,8 +351,9 @@ async function init() {
   printDetection(detected);
 
   const suggested = suggestedAgents(detected);
+  note("We currently only support agents where you have an active subscription.", "Agent Support");
   const agents = unwrapPrompt(await multiselect({
-    message: "Choose one or more agents to run in parallel.",
+    message: "Which agent(s) do you want to use?",
     required: true,
     initialValues: [suggested],
     options: [
