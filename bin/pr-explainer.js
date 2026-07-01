@@ -209,7 +209,7 @@ function detectedAgentNames(detected) {
   const found = [];
   if (detected.claudeCli || detected.claudeToken) found.push("claude");
   if (detected.codexCli || detected.codexAuth) found.push("codex");
-  return found.length ? found.join(", ") : "none";
+  return found;
 }
 
 async function collectClaudeAuth(detected) {
@@ -362,7 +362,13 @@ async function init() {
 
   const repo = detectRepo();
   const detected = detectedAgents();
-  log.info(`Installs a PR explainer workflow. Detected: ${detectedAgentNames(detected)}. Subscription required.`);
+  const detectedNames = detectedAgentNames(detected);
+  log.info([
+    "Installs a PR explainer workflow.",
+    "Detected:",
+    ...(detectedNames.length ? detectedNames.map((agent) => `  ${agent}`) : ["  none"]),
+    "Subscription required.",
+  ].join("\n"));
 
   const suggested = suggestedAgents(detected);
   const agents = unwrapPrompt(await multiselect({
