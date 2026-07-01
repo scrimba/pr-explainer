@@ -7,7 +7,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 const WORKFLOW_PATH = ".github/workflows/scrimba-pr-explainer.yml";
-const ACTION_REF = "scrimba/pr-explainer@v1";
+const ACTION_REF = "scrimba/pr-explainer@main";
 const CODEX_AUTH_PATH = join(homedir(), ".codex", "auth.json");
 
 const colors = {
