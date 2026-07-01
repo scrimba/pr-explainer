@@ -420,8 +420,6 @@ async function writeWorkflow() {
 async function init() {
   title("Scrimba PR Explainer");
   description("This adds a GitHub Action that comments on PRs with Scrimba explainer links.");
-  field("Agents", `${code("claude")}, ${code("codex")}, or both`);
-  field("Action ref", code(ACTION_REF));
 
   if (!commandExists("git")) {
     throw new Error("git is required. Run init from a local checkout of the repository.");
