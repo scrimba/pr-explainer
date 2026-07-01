@@ -443,7 +443,7 @@ async function init() {
   field("One agent", code("claude"));
   field("Multiple agents", `${code("claude,codex")} or ${code("claude codex")}`);
   const suggested = suggestedAgents(detected);
-  field("Recommended", code(suggested));
+  field("Default", code(suggested));
   const agents = normalizeAgents(await ask("Agents to run", suggested));
   field("Selected", value(agents.join(",")));
 
