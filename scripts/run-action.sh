@@ -404,7 +404,7 @@ def item_summary($item):
   elif $item.type == "reasoning" then
     lines("[reasoning] "; ($item.text // $item.summary // $item.content // ""))
   elif $item.type == "command_execution" then
-    "[command " + (($item.status // "event") | tostring) + "] " + (($item.command // "") | tostring)
+    "[cmd " + (($item.status // "event") | tostring) + "] " + (($item.command // "") | tostring)
   elif $item.type == "mcp_tool_call" then
     "[mcp " + (($item.status // "event") | tostring) + "] " + (($item.server // "mcp") | tostring) + "." + (($item.tool // $item.name // "tool") | tostring)
   elif $item.type == "web_search" then
@@ -429,7 +429,7 @@ fromjson? |
   elif .type == "turn.failed" then
     "[result] failed"
   elif .type == "error" then
-    lines("[error] "; (.message // .error // "unknown error"))
+    lines("[agent error] "; (.message // .error // "unknown error"))
   elif (.type | startswith("item.")) then
     item_summary(.item)
   else
