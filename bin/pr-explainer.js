@@ -145,17 +145,26 @@ function setVariable(name, value) {
   run("gh", ["variable", "set", name, "--body", value]);
 }
 
-function logManualGitHubCommands(agents, auth) {
-  let body = `Set these in GitHub repo settings or run:
-gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body '${agents.join(",")}'`;
+function logManualGitHubCommands(agents) {
+  let body = "";
   if (agents.includes("claude")) {
-    if (!auth?.claude?.token) {
-      body += "\n\nclaude setup-token";
-    }
-    body += "\n\ngh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN";
+    body += `Claude:
+
+ * Get token:
+  \`claude setup-token\`
+
+ * Set token:
+  \`gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN\``;
   }
   if (agents.includes("codex")) {
-    body += "\n\ngh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body \"$(base64 < ~/.codex/auth.json | tr -d '\\n')\"";
+    if (body) body += "\n\n";
+    body += `Codex:
+
+ * Log in with:
+  \`codex login --device-auth\`
+
+ * Set token via:
+  \`base64 < ~/.codex/auth.json | gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64\``;
   }
   note(body, "GitHub settings");
 }
@@ -299,7 +308,7 @@ async function configureGitHub(github, agents, detected) {
   }
 
   const shouldSet = unwrapPrompt(await confirm({
-    message: `Set GitHub secrets and variables on ${github.repo} now?`,
+    message: `Set GitHub secrets on ${github.repo} now?`,
     initialValue: true,
   }));
   if (!shouldSet) {
@@ -309,23 +318,23 @@ async function configureGitHub(github, agents, detected) {
   }
 
   const auth = await collectAuth(agents, detected);
-  const agentsValue = agents.join(",");
-  let configured = `GitHub repository ${github.repo} updated:
-variable SCRIMBA_PR_EXPLAINER_AGENTS=${agentsValue}`;
+  let configured = "";
   const s = spinner();
   try {
     s.start("Setting GitHub repository settings");
-    setVariable("SCRIMBA_PR_EXPLAINER_AGENTS", agentsValue);
     if (agents.includes("claude") && auth.claude?.token) {
       setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.claude.token);
-      configured += "\nsecret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN";
+      configured += "secret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN";
     }
     if (agents.includes("codex")) {
       setSecret("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64", auth.codexAuthB64);
-      configured += "\nsecret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64";
+      if (configured) configured += "\n";
+      configured += "secret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64";
     }
     s.clear();
-    log.success(configured);
+    if (configured) {
+      log.success(`GitHub repository ${github.repo} updated:\n${configured}`);
+    }
   } catch (error) {
     s.error("Failed to set GitHub repository settings");
     throw error;

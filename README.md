@@ -94,7 +94,7 @@ jobs:
     steps:
       - uses: scrimba/pr-explainer@<ref>
         with:
-          agents: ${{ github.event.inputs.agents || github.event.inputs.agent || '' }}
+          agents: claude,codex
           allow-forks: false
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,19 +108,12 @@ Replace `<ref>` with the action ref you want to run, such as `main` while testin
 
 ## Agent Setup
 
-Set one or more agents:
+Set one or more agents in the workflow:
 
-```bash
-gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body 'claude,codex'
+```yaml
+with:
+  agents: claude,codex
 ```
-
-`SCRIMBA_PR_EXPLAINER_AGENT` is a singular alias for one selected agent:
-
-```bash
-gh variable set SCRIMBA_PR_EXPLAINER_AGENT --body claude
-```
-
-When both are set, `SCRIMBA_PR_EXPLAINER_AGENTS` wins.
 
 ## Claude Auth
 
