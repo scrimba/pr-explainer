@@ -13,22 +13,23 @@ npx @scrimba/pr-explainer init
 
 The init command:
 
-- detects the current GitHub repo with `gh`
+- verifies it is running inside a git repository
 - detects Claude Code and Codex locally
 - asks whether to use Claude, Codex, or both
-- helps create or collect auth for the selected agents
-- asks before setting GitHub variables and secrets
 - writes `.github/workflows/scrimba-pr-explainer.yml`
+- optionally sets the required GitHub variables and secrets when `gh` is available and authenticated
+- prints the manual setup commands when automatic GitHub setup is unavailable or skipped
 - does not commit anything
 
 ## Requirements
 
-- A GitHub repository with Actions enabled
-- GitHub CLI installed and authenticated: `gh auth login`
+- A git repository hosted on GitHub with Actions enabled
+- `git`
 - Node.js 20 or newer for the init command
 - At least one supported agent:
   - Claude Code with a Claude Code OAuth token
   - Codex with `~/.codex/auth.json`
+- Optional: GitHub CLI installed and authenticated with `gh auth login` if you want the installer to set repo variables and secrets for you
 
 This action is designed for subscription-based CLI auth. You do not need LLM API keys.
 
@@ -66,6 +67,11 @@ on:
         required: false
         default: ""
         type: string
+      agent:
+        description: Singular alias for agents, e.g. claude
+        required: false
+        default: ""
+        type: string
       pr_number:
         description: PR number to explain when running manually
         required: false
@@ -90,14 +96,16 @@ jobs:
 
       - uses: scrimba/pr-explainer@<ref>
         with:
-          agents: ${{ vars.SCRIMBA_PR_EXPLAINER_AGENTS }}
+          agents: ${{ github.event.inputs.agents || github.event.inputs.agent || vars.SCRIMBA_PR_EXPLAINER_AGENTS || vars.SCRIMBA_PR_EXPLAINER_AGENT }}
+          pr-number: ${{ github.event.inputs.pr_number || '' }}
+          mcp-url: ${{ vars.SCRIMBA_PR_EXPLAINER_MCP_URL || 'https://scrimba.com/explain/mcp' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
           SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64: ${{ secrets.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 }}
 ```
 
-Use `npx @scrimba/pr-explainer init` for the full workflow, including manual PR selection, fork protection, concurrency, and MCP URL configuration.
+Use `npx @scrimba/pr-explainer init` for the full workflow, including checkout ref resolution, manual PR selection, fork protection, concurrency, and MCP URL configuration.
 
 Replace `<ref>` with the action ref you want to run, such as `main` while testing unreleased changes or a versioned ref after release.
 
@@ -131,7 +139,7 @@ Then store it as a GitHub Actions secret:
 gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN
 ```
 
-The init command can also run `claude setup-token` for you, accept a pasted token, or let you skip Claude secret setup and do it later.
+If GitHub CLI is available, the init command can run `claude setup-token` for you, accept a pasted token, and save the token as the GitHub secret. If GitHub CLI is unavailable or you skip automatic setup, it prints the manual commands.
 
 ## Codex Auth
 
@@ -147,7 +155,7 @@ Then store the Codex auth file as a GitHub Actions secret:
 gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\n')"
 ```
 
-The init command can run the Codex login flow and set this secret for you.
+If GitHub CLI is available, the init command can use the detected `~/.codex/auth.json`, or let you log in with Codex again and use the new auth file. It then saves the selected auth file as the GitHub secret. If GitHub CLI is unavailable or you skip automatic setup, it prints the manual commands.
 
 ## Action Inputs
 
@@ -192,7 +200,7 @@ To allow them:
 gh variable set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS --body true
 ```
 
-Only enable this for repositories where you are comfortable letting PR-controlled code and prompts influence agents that can read job secrets. GitHub hides secret values in the UI, but processes running inside a workflow job can read secrets that are passed to that job.
+Only enable this for repositories where you trust fork PRs not to execute prompt injections. These explainers are created by your selected agent using PR content, and that agent has access to the checked-out repository and any secrets passed to the job.
 
 ## Manual Runs
 
