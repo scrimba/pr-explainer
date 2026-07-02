@@ -10,6 +10,7 @@ import {
   isCancel,
   log,
   multiselect,
+  note,
   outro,
   password,
   select,
@@ -291,19 +292,26 @@ async function collectCodexAuth() {
     return envAuth;
   }
 
-  if (!existsSync(CODEX_AUTH_PATH)) {
-    if (!commandExists("codex")) {
-      throw new Error("Codex was selected, but the codex CLI is not installed and ~/.codex/auth.json was not found.");
-    }
-    log.warn("Codex auth was not found at ~/.codex/auth.json.");
-    const shouldLogin = unwrapPrompt(await confirm({
-      message: "Run `codex login --device-auth` now?",
-      initialValue: true,
+  if (existsSync(CODEX_AUTH_PATH)) {
+    const mode = unwrapPrompt(await select({
+      message: "Found Codex authentication at ~/.codex/auth.json. What should we use for GitHub Actions?",
+      initialValue: "detected",
+      options: [
+        { value: "detected", label: "Use the detected Codex auth file" },
+        { value: "login", label: "Log in with Codex now" },
+      ],
     }));
-    if (shouldLogin) {
-      run("codex", ["login", "--device-auth"], { stdio: "inherit" });
+
+    if (mode === "detected") {
+      return base64File(CODEX_AUTH_PATH);
     }
+  } else if (!commandExists("codex")) {
+    throw new Error("Codex was selected, but the codex CLI is not installed and ~/.codex/auth.json was not found.");
+  } else {
+    log.warn("Codex auth was not found at ~/.codex/auth.json.");
   }
+
+  run("codex", ["login", "--device-auth"], { stdio: "inherit" });
 
   if (!existsSync(CODEX_AUTH_PATH)) {
     throw new Error("Codex auth.json still was not found. Run `codex login --device-auth`, then rerun init.");
@@ -345,17 +353,20 @@ async function configureGitHub(github, agents, detected) {
   }
 
   const auth = await collectAuth(agents, detected);
+  const configured = [`variable SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`];
   const s = spinner();
   s.start("Setting GitHub repository settings");
   try {
     setVariable("SCRIMBA_PR_EXPLAINER_AGENTS", agents.join(","));
     if (agents.includes("claude") && auth.claude?.token) {
       setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.claude.token);
+      configured.push("secret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
     }
     if (agents.includes("codex")) {
       setSecret("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64", auth.codexAuthB64);
+      configured.push("secret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64");
     }
-    s.stop("GitHub repository settings updated");
+    s.stop(`GitHub repository ${github.repo} updated:\n  ${configured.join("\n  ")}`);
   } catch (error) {
     s.error("Failed to set GitHub repository settings");
     throw error;
@@ -366,13 +377,14 @@ async function configureGitHub(github, agents, detected) {
     log.info("Run this when you have a token:\n  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
   }
 
+  note("Fork PRs can contain prompt injection. These explainers are created by your selected agent, using PR content, with access to the checked-out repository. Only enable this if you trust the PRs that will run this workflow.", "Fork PR Safety");
   const allowForks = unwrapPrompt(await confirm({
     message: "Allow PR explainers to run on fork PRs?",
     initialValue: false,
   }));
   if (allowForks) {
     setVariable("SCRIMBA_PR_EXPLAINER_ALLOW_FORKS", "true");
-    log.success("Set variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true");
+    log.success("Set GitHub repository setting:\n  variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true");
   }
 }
 
@@ -402,11 +414,14 @@ async function init() {
   const github = detectGitHub();
   const detected = detectedAgents();
   const detectedNames = detectedAgentNames(detected);
+  note(`This installer will add a GitHub Action that runs on your PRs and creates video explanations using a supported agent of your choice.
+
+Optionally, we can set up tokens for you as well.`, "Welcome");
   log.info([
-    "Installs a PR explainer workflow.",
     "Detected:",
     ...(detectedNames.length ? detectedNames.map((agent) => `  ${agent}`) : ["  none"]),
-    "Subscription required.",
+    "",
+    "Supported agents currently require an active subscription.",
   ].join("\n"));
 
   const suggested = suggestedAgents(detected);
@@ -418,18 +433,16 @@ async function init() {
       {
         value: "claude",
         label: "Claude Code",
-        hint: detected.claudeCli || detected.claudeToken ? "available" : "token required",
       },
       {
         value: "codex",
         label: "Codex",
-        hint: detected.codexCli || detected.codexAuth ? "available" : "auth required",
       },
     ],
   }));
 
-  await configureGitHub(github, agents, detected);
   await writeWorkflow();
+  await configureGitHub(github, agents, detected);
 
   log.info(`Next:\n  git add ${WORKFLOW_PATH}\n  git commit -m "Add Scrimba PR Explainer"\n  git push`);
   outro("Done. No files were committed.");
