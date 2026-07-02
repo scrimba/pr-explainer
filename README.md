@@ -4,7 +4,7 @@ Create Scrimba explainer videos for GitHub pull requests with Claude Code, Codex
 
 The action checks out the PR, lets the selected agent inspect the code and diff, creates a Scrimba video explainer through the Scrimba MCP server, and keeps one PR comment updated with the latest explainer links.
 
-Example video: https://scrimba.com/explain/guide0b4eg1luj
+Example video: https://scrimba.com/explain/guide0t4l29d7l
 
 ## Quick Start
 
