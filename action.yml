@@ -26,6 +26,34 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Resolve checkout ref
+      id: checkout-ref
+      shell: bash
+      env:
+        SCRIMBA_PR_EXPLAINER_EVENT_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        set -euo pipefail
+        if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          echo "ref=refs/pull/$SCRIMBA_PR_EXPLAINER_EVENT_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+        elif [ -n "$SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER" ]; then
+          echo "ref=refs/pull/$SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
+        else
+          echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ steps.checkout-ref.outputs.ref }}
+
     - name: Run Scrimba PR Explainer
       shell: bash
       env:

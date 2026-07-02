@@ -84,18 +84,14 @@ permissions:
   pull-requests: write
   issues: write
 
+concurrency:
+  group: scrimba-pr-explainer-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   explain:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - uses: scrimba/pr-explainer@<ref>
         with:
           agents: ${{ github.event.inputs.agents || github.event.inputs.agent || vars.SCRIMBA_PR_EXPLAINER_AGENTS || vars.SCRIMBA_PR_EXPLAINER_AGENT }}
@@ -108,7 +104,7 @@ jobs:
           SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64: ${{ secrets.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 }}
 ```
 
-Use `npx @scrimba/pr-explainer init` for the full workflow, including checkout ref resolution, manual PR selection, fork protection, concurrency, and MCP URL configuration.
+The action handles checkout, Node setup, PR metadata, prompt logging, agent execution, and PR comments. The generated workflow only owns triggers, token permissions, concurrency, inputs, secrets, and policy values.
 
 Replace `<ref>` with the action ref you want to run, such as `main` while testing unreleased changes or a versioned ref after release.
 

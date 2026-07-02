@@ -126,35 +126,9 @@ concurrency:
 
 jobs:
   explain:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || vars.SCRIMBA_PR_EXPLAINER_ALLOW_FORKS == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Resolve checkout ref
-        id: checkout-ref
-        env:
-          PR_NUMBER: \${{ github.event.inputs.pr_number || '' }}
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            echo "ref=refs/pull/\${{ github.event.pull_request.number }}/merge" >> "$GITHUB_OUTPUT"
-          elif [ -n "$PR_NUMBER" ]; then
-            echo "ref=refs/pull/$PR_NUMBER/merge" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: \${{ steps.checkout-ref.outputs.ref }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Create Scrimba PR explainer
         uses: ${ACTION_REF}
         with:
