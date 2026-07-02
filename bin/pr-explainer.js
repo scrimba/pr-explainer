@@ -15,6 +15,7 @@ import {
   password,
   select,
   spinner,
+  tasks,
 } from "@clack/prompts";
 
 const WORKFLOW_PATH = ".github/workflows/scrimba-pr-explainer.yml";
@@ -155,16 +156,17 @@ function setVariable(name, value) {
   run("gh", ["variable", "set", name, "--body", value]);
 }
 
-function printManualGitHubCommands(agents, auth) {
-  console.log(`  gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body '${agents.join(",")}'`);
+function logManualGitHubCommands(agents, auth) {
+  log.info(`Set these in GitHub repo settings or run:
+gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body '${agents.join(",")}'`);
   if (agents.includes("claude")) {
     if (!auth?.claude?.token) {
-      console.log("  claude setup-token");
+      log.info("claude setup-token");
     }
-    console.log("  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+    log.info("gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
   }
   if (agents.includes("codex")) {
-    console.log("  gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body \"$(base64 < ~/.codex/auth.json | tr -d '\\n')\"");
+    log.info("gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body \"$(base64 < ~/.codex/auth.json | tr -d '\\n')\"");
   }
 }
 
@@ -208,13 +210,6 @@ function suggestedAgents(detected) {
   if (detected.claudeCli || detected.claudeToken) return "claude";
   if (detected.codexCli || detected.codexAuth) return "codex";
   return "claude";
-}
-
-function detectedAgentNames(detected) {
-  const found = [];
-  if (detected.claudeCli || detected.claudeToken) found.push("claude");
-  if (detected.codexCli || detected.codexAuth) found.push("codex");
-  return found;
 }
 
 async function collectClaudeAuth(detected) {
@@ -309,9 +304,7 @@ async function collectAuth(agents, detected) {
 async function configureGitHub(github, agents, detected) {
   if (!github.available) {
     log.warn(`${github.reason} Skipping automatic GitHub setup.`);
-    console.log("");
-    log.info("Set these in GitHub repo settings or run:");
-    printManualGitHubCommands(agents);
+    logManualGitHubCommands(agents);
     return;
   }
 
@@ -321,27 +314,28 @@ async function configureGitHub(github, agents, detected) {
   }));
   if (!shouldSet) {
     log.warn("Skipped GitHub settings.");
-    console.log("");
-    log.info("Set these in GitHub repo settings or run:");
-    printManualGitHubCommands(agents);
+    logManualGitHubCommands(agents);
     return;
   }
 
   const auth = await collectAuth(agents, detected);
-  const configured = [`variable SCRIMBA_PR_EXPLAINER_AGENTS=${agents.join(",")}`];
+  const agentsValue = agents.join(",");
+  let configured = `GitHub repository ${github.repo} updated:
+variable SCRIMBA_PR_EXPLAINER_AGENTS=${agentsValue}`;
   const s = spinner();
-  s.start("Setting GitHub repository settings");
   try {
-    setVariable("SCRIMBA_PR_EXPLAINER_AGENTS", agents.join(","));
+    s.start("Setting GitHub repository settings");
+    setVariable("SCRIMBA_PR_EXPLAINER_AGENTS", agentsValue);
     if (agents.includes("claude") && auth.claude?.token) {
       setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.claude.token);
-      configured.push("secret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+      configured += "\nsecret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN";
     }
     if (agents.includes("codex")) {
       setSecret("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64", auth.codexAuthB64);
-      configured.push("secret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64");
+      configured += "\nsecret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64";
     }
-    s.stop(`GitHub repository ${github.repo} updated:\n  ${configured.join("\n  ")}`);
+    s.clear();
+    log.success(configured);
   } catch (error) {
     s.error("Failed to set GitHub repository settings");
     throw error;
@@ -358,8 +352,16 @@ async function configureGitHub(github, agents, detected) {
     initialValue: false,
   }));
   if (allowForks) {
-    setVariable("SCRIMBA_PR_EXPLAINER_ALLOW_FORKS", "true");
-    log.success("Set GitHub repository setting:\n  variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true");
+    await tasks([
+      {
+        title: "Set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS",
+        task: () => {
+          setVariable("SCRIMBA_PR_EXPLAINER_ALLOW_FORKS", "true");
+          return "variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true";
+        },
+      },
+    ]);
+    log.success(`GitHub repository ${github.repo} updated`);
   }
 }
 
@@ -388,16 +390,31 @@ async function init() {
 
   const github = detectGitHub();
   const detected = detectedAgents();
-  const detectedNames = detectedAgentNames(detected);
-  note(`This installer will add a GitHub Action that runs on your PRs and creates video explanations using a supported agent of your choice.
 
-Optionally, we can set up tokens for you as well.`, "Welcome");
-  log.info([
-    "Detected:",
-    ...(detectedNames.length ? detectedNames.map((agent) => `  ${agent}`) : ["  none"]),
-    "",
-    "Supported agents currently require an active subscription.",
-  ].join("\n"));
+  note(`This installer adds a GitHub Action that creates Scrimba PR explainer videos.
+
+It can also set up the required GitHub tokens and repository variables.`);
+
+  let n = []
+
+  if (detected.claudeCli || detected.claudeToken) {
+    n.push("  Claude Code.");
+  }
+  if (detected.codexCli || detected.codexAuth) {
+    n.push("  Codex.");
+  }
+
+  if (n.length) {
+    n.unshift("Detected supported agents locally:");
+  }
+
+  if (n.length) {
+    log.info(n.join("\n"));
+  }
+
+  if (!n.length) {
+    log.warn("No supported agents detected locally.");
+  }
 
   const suggested = suggestedAgents(detected);
   const agents = unwrapPrompt(await multiselect({
