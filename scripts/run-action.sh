@@ -342,6 +342,9 @@ write_stream_formatters() {
 def lines($prefix; $s):
   ($s // "" | tostring | gsub("\r"; "") | split("\n") | map(select(length > 0)) | .[:40][] | $prefix + .);
 
+def oneline($s; $max):
+  ($s // "" | tostring | gsub("[\r\n\t]+"; " ") | if length > $max then .[:$max] + "..." else . end);
+
 def tool_summary:
   if .name == "append_explainer_chunk" then
     "[tool call] append_explainer_chunk (" + ((.input.opml // "" | tostring | length) | tostring) + " OPML chars)"
@@ -351,8 +354,16 @@ def tool_summary:
     "[tool call] " + .name
   elif .name == "Write" then
     "[tool call] Write " + ((.input.file_path // .input.path // "file") | tostring)
+  elif .name == "Bash" then
+    "[tool call] Bash: " + oneline(.input.command; 300)
+  elif .name == "Read" then
+    "[tool call] Read " + ((.input.file_path // "") | tostring)
+  elif .name == "WebSearch" then
+    "[tool call] WebSearch: " + oneline(.input.query; 200)
+  elif .name == "WebFetch" then
+    "[tool call] WebFetch " + ((.input.url // "") | tostring)
   else
-    "[tool call] " + (.name // "unknown")
+    "[tool call] " + (.name // "unknown") + " " + oneline(.input | tojson; 200)
   end;
 
 if .type == "system" and .subtype == "thinking_tokens" then
@@ -372,7 +383,7 @@ elif .type == "user" and (.tool_use_result? != null) then
   if (.tool_use_result.is_error? // false) == true then
     lines("[tool error] "; ((.tool_use_result.stderr? // .tool_use_result.stdout? // "") | tostring))
   else
-    "[tool result] ok"
+    "[tool result] " + oneline(.tool_use_result.stdout? // .tool_use_result.content? // "ok"; 200)
   end
 elif .type == "rate_limit_event" then
   "[rate limit] " + (.rate_limit_info.status // "unknown")
@@ -520,11 +531,11 @@ run_agent() {
         --permission-mode dontAsk \
         --allowedTools "mcp__scrimba__start_explainer_stream,mcp__scrimba__append_explainer_chunk,mcp__scrimba__finish_explainer_stream,Read,Bash,WebFetch,WebSearch,Write" \
         < "$dir/prompt.md" \
-        2> >(tee "$dir/agent-stderr.txt" | sed "s/^/[$agent stderr] /" >&2) \
+        2> >(tee "$dir/agent-stderr.txt" | sed -u "s/^/[$agent stderr] /" >&2) \
         | tee "$dir/claude-stream.jsonl" \
-        | jq -r -f "$WORK_DIR/format-claude-stream.jq" \
+        | jq --unbuffered -r -f "$WORK_DIR/format-claude-stream.jq" \
         | tee "$dir/agent-output.txt" \
-        | sed "s/^/[$agent] /"
+        | sed -u "s/^/[$agent] /"
       status="${PIPESTATUS[0]}"
       ;;
     codex)
@@ -537,11 +548,11 @@ run_agent() {
         --output-last-message "$dir/agent-final.txt" \
         - \
         < "$dir/prompt.md" \
-        2> >(tee "$dir/agent-stderr.txt" | sed "s/^/[$agent stderr] /" >&2) \
+        2> >(tee "$dir/agent-stderr.txt" | sed -u "s/^/[$agent stderr] /" >&2) \
         | tee "$dir/codex-stream.jsonl" \
-        | jq -Rr -f "$WORK_DIR/format-codex-stream.jq" \
+        | jq --unbuffered -Rr -f "$WORK_DIR/format-codex-stream.jq" \
         | tee "$dir/agent-output.txt" \
-        | sed "s/^/[$agent] /"
+        | sed -u "s/^/[$agent] /"
       status="${PIPESTATUS[0]}"
       if [ -s "$dir/agent-final.txt" ]; then
         {
@@ -629,6 +640,17 @@ main() {
   fi
 
   update_comment_if_changed
+
+  for agent in "${RESOLVED_AGENTS[@]}"; do
+    echo "::group::Full agent transcript ($agent)"
+    cat "$AGENTS_DIR/$agent/agent-output.txt" 2>/dev/null || true
+    echo "::endgroup::"
+    if [ -s "$AGENTS_DIR/$agent/agent-stderr.txt" ]; then
+      echo "::group::Agent stderr ($agent)"
+      cat "$AGENTS_DIR/$agent/agent-stderr.txt"
+      echo "::endgroup::"
+    fi
+  done
 
   local overall_status=0
   for agent in "${RESOLVED_AGENTS[@]}"; do
