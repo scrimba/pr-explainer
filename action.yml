@@ -6,22 +6,10 @@ inputs:
     description: Comma-separated agents to run, e.g. claude,codex.
     required: false
     default: ""
-  agent:
-    description: Singular alias for agents, e.g. claude.
-    required: false
-    default: ""
-  pr-number:
-    description: PR number to explain when running manually.
-    required: false
-    default: ""
-  mcp-url:
-    description: Scrimba MCP URL.
-    required: false
-    default: https://scrimba.com/explain/mcp
   allow-forks:
     description: Set to true to allow PR explainers on fork PRs.
     required: false
-    default: "false"
+    default: ""
 
 runs:
   using: composite
@@ -36,7 +24,7 @@ runs:
       shell: bash
       env:
         SCRIMBA_PR_EXPLAINER_EVENT_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-        SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+        SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number || '' }}
       run: |
         set -euo pipefail
         if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
@@ -57,9 +45,12 @@ runs:
     - name: Run Scrimba PR Explainer
       shell: bash
       env:
-        SCRIMBA_PR_EXPLAINER_INPUT_AGENTS: ${{ inputs.agents }}
-        SCRIMBA_PR_EXPLAINER_INPUT_AGENT: ${{ inputs.agent }}
-        SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ inputs.pr-number }}
-        SCRIMBA_PR_EXPLAINER_MCP_URL: ${{ inputs.mcp-url }}
-        SCRIMBA_PR_EXPLAINER_ALLOW_FORKS: ${{ inputs.allow-forks }}
+        SCRIMBA_PR_EXPLAINER_INPUT_AGENTS: ${{ inputs.agents || github.event.inputs.agents || '' }}
+        SCRIMBA_PR_EXPLAINER_INPUT_AGENT: ${{ github.event.inputs.agent || '' }}
+        SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ github.event.inputs.pr_number || '' }}
+        SCRIMBA_PR_EXPLAINER_INPUT_ALLOW_FORKS: ${{ inputs.allow-forks }}
+        SCRIMBA_PR_EXPLAINER_AGENTS: ${{ vars.SCRIMBA_PR_EXPLAINER_AGENTS || '' }}
+        SCRIMBA_PR_EXPLAINER_AGENT: ${{ vars.SCRIMBA_PR_EXPLAINER_AGENT || '' }}
+        SCRIMBA_PR_EXPLAINER_MCP_URL: ${{ vars.SCRIMBA_PR_EXPLAINER_MCP_URL || '' }}
+        SCRIMBA_PR_EXPLAINER_ALLOW_FORKS: ${{ vars.SCRIMBA_PR_EXPLAINER_ALLOW_FORKS || '' }}
       run: "$GITHUB_ACTION_PATH/scripts/run-action.sh"

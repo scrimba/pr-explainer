@@ -94,17 +94,15 @@ jobs:
     steps:
       - uses: scrimba/pr-explainer@<ref>
         with:
-          agents: ${{ github.event.inputs.agents || github.event.inputs.agent || vars.SCRIMBA_PR_EXPLAINER_AGENTS || vars.SCRIMBA_PR_EXPLAINER_AGENT }}
-          pr-number: ${{ github.event.inputs.pr_number || '' }}
-          mcp-url: ${{ vars.SCRIMBA_PR_EXPLAINER_MCP_URL || 'https://scrimba.com/explain/mcp' }}
-          allow-forks: ${{ vars.SCRIMBA_PR_EXPLAINER_ALLOW_FORKS || 'false' }}
+          agents: ${{ github.event.inputs.agents || github.event.inputs.agent || '' }}
+          allow-forks: false
         env:
           GH_TOKEN: ${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
           SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64: ${{ secrets.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 }}
 ```
 
-The action handles checkout, Node setup, PR metadata, prompt logging, agent execution, and PR comments. The generated workflow only owns triggers, token permissions, concurrency, inputs, secrets, and policy values.
+The action handles checkout, Node setup, PR metadata, repository variables, prompt logging, agent execution, and PR comments. The generated workflow only owns triggers, token permissions, concurrency, workflow-dispatch inputs, public action inputs, and secrets.
 
 Replace `<ref>` with the action ref you want to run, such as `main` while testing unreleased changes or a versioned ref after release.
 
@@ -163,16 +161,13 @@ These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
 | Input | Default | Description |
 |---|---:|---|
 | `agents` | `""` | Comma-separated agents to run, such as `claude,codex`. |
-| `agent` | `""` | Singular alias for `agents`, such as `claude`. |
-| `pr-number` | `""` | PR number to explain when running manually. |
-| `mcp-url` | `https://scrimba.com/explain/mcp` | Scrimba MCP server URL. |
-| `allow-forks` | `false` | Set to `true` to allow explainers on fork PRs. |
+| `allow-forks` | `""` | Set to `true` to allow explainers on fork PRs. |
 
-If `agents` and `agent` are both empty, the action chooses an agent from the available secrets, preferring Claude when both are absent.
+If `agents` is empty, the action chooses an agent from the available secrets, preferring Claude when both are absent.
 
 ## Repository Variables
 
-These are GitHub repository variables used by the generated workflow.
+These are GitHub repository variables read by the action.
 
 | Variable | Description |
 |---|---|
@@ -181,7 +176,8 @@ These are GitHub repository variables used by the generated workflow.
 | `SCRIMBA_PR_EXPLAINER_MCP_URL` | Optional override for the Scrimba MCP URL. Defaults to production Scrimba. |
 | `SCRIMBA_PR_EXPLAINER_ALLOW_FORKS` | Set to `true` to run on fork PRs. Defaults to disabled. |
 
-The generated workflow maps `SCRIMBA_PR_EXPLAINER_MCP_URL` into the action's `mcp-url` input. If you write your own workflow and set `with: mcp-url`, that explicit input is what the action uses.
+The action reads these repository variables directly. The generated workflow does not need to reference them.
+When a repository variable is set, it overrides the corresponding `with:` input.
 
 ## Secrets
 

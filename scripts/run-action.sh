@@ -19,10 +19,10 @@ require_cmd() {
 
 resolve_agents() {
   local raw_agents
-  raw_agents="${SCRIMBA_PR_EXPLAINER_INPUT_AGENTS:-}"
-  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_INPUT_AGENT:-}"
-  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_AGENTS:-}"
+  raw_agents="${SCRIMBA_PR_EXPLAINER_AGENTS:-}"
   [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_AGENT:-}"
+  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_INPUT_AGENTS:-}"
+  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_INPUT_AGENT:-}"
 
   if [ -z "$raw_agents" ]; then
     if [ -n "${SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
@@ -108,7 +108,11 @@ resolve_pr_context() {
 }
 
 enforce_fork_policy() {
-  if [ "${IS_CROSS_REPOSITORY:-false}" = "true" ] && [ "${SCRIMBA_PR_EXPLAINER_ALLOW_FORKS:-}" != "true" ]; then
+  local allow_forks
+  allow_forks="${SCRIMBA_PR_EXPLAINER_ALLOW_FORKS:-}"
+  [ -n "$allow_forks" ] || allow_forks="${SCRIMBA_PR_EXPLAINER_INPUT_ALLOW_FORKS:-}"
+
+  if [ "${IS_CROSS_REPOSITORY:-false}" = "true" ] && [ "$allow_forks" != "true" ]; then
     echo "::error::PR #$PR_NUMBER is from a fork. Set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true only if you trust fork PR content not to prompt-inject the selected agent."
     exit 1
   fi

@@ -93,7 +93,8 @@ function unwrapPrompt(value) {
   return value;
 }
 
-function workflowYaml() {
+function workflowYaml(agents) {
+  const agentsValue = agents.join(",");
   return `name: Scrimba PR Explainer
 
 on:
@@ -101,16 +102,6 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
-      agents:
-        description: Comma-separated agents to use, e.g. claude,codex
-        required: false
-        default: ""
-        type: string
-      agent:
-        description: Singular alias for agents, e.g. claude
-        required: false
-        default: ""
-        type: string
       pr_number:
         description: PR number to explain when running manually
         required: false
@@ -133,10 +124,8 @@ jobs:
       - name: Create Scrimba PR explainer
         uses: ${ACTION_REF}
         with:
-          agents: \${{ github.event.inputs.agents || github.event.inputs.agent || vars.SCRIMBA_PR_EXPLAINER_AGENTS || vars.SCRIMBA_PR_EXPLAINER_AGENT }}
-          pr-number: \${{ github.event.inputs.pr_number || '' }}
-          mcp-url: \${{ vars.SCRIMBA_PR_EXPLAINER_MCP_URL || 'https://scrimba.com/explain/mcp' }}
-          allow-forks: \${{ vars.SCRIMBA_PR_EXPLAINER_ALLOW_FORKS || 'false' }}
+          agents: ${agentsValue}
+          allow-forks: false
         env:
           GH_TOKEN: \${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
@@ -157,17 +146,18 @@ function setVariable(name, value) {
 }
 
 function logManualGitHubCommands(agents, auth) {
-  log.info(`Set these in GitHub repo settings or run:
-gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body '${agents.join(",")}'`);
+  let body = `Set these in GitHub repo settings or run:
+gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body '${agents.join(",")}'`;
   if (agents.includes("claude")) {
     if (!auth?.claude?.token) {
-      log.info("claude setup-token");
+      body += "\n\nclaude setup-token";
     }
-    log.info("gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+    body += "\n\ngh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN";
   }
   if (agents.includes("codex")) {
-    log.info("gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body \"$(base64 < ~/.codex/auth.json | tr -d '\\n')\"");
+    body += "\n\ngh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body \"$(base64 < ~/.codex/auth.json | tr -d '\\n')\"";
   }
+  note(body, "GitHub settings");
 }
 
 function requireGitRepo() {
@@ -365,7 +355,7 @@ variable SCRIMBA_PR_EXPLAINER_AGENTS=${agentsValue}`;
   }
 }
 
-async function writeWorkflow() {
+async function writeWorkflow(agents) {
   if (existsSync(WORKFLOW_PATH)) {
     const overwrite = unwrapPrompt(await confirm({
       message: `${WORKFLOW_PATH} already exists. Overwrite?`,
@@ -378,7 +368,7 @@ async function writeWorkflow() {
   }
 
   mkdirSync(dirname(WORKFLOW_PATH), { recursive: true });
-  writeFileSync(WORKFLOW_PATH, workflowYaml());
+  writeFileSync(WORKFLOW_PATH, workflowYaml(agents));
   log.success(`Wrote ${WORKFLOW_PATH}`);
   return true;
 }
@@ -433,7 +423,7 @@ It can also set up the required GitHub tokens and repository variables.`);
     ],
   }));
 
-  await writeWorkflow();
+  await writeWorkflow(agents);
   await configureGitHub(github, agents, detected);
 
   log.info(`Next:\n  git add ${WORKFLOW_PATH}\n  git commit -m "Add Scrimba PR Explainer"\n  git push`);
