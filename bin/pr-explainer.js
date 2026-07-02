@@ -182,7 +182,7 @@ function setVariable(name, value) {
 function printManualGitHubCommands(agents, auth) {
   console.log(`  gh variable set SCRIMBA_PR_EXPLAINER_AGENTS --body '${agents.join(",")}'`);
   if (agents.includes("claude")) {
-    if (!auth.claude?.token) {
+    if (!auth?.claude?.token) {
       console.log("  claude setup-token");
     }
     console.log("  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
@@ -192,12 +192,31 @@ function printManualGitHubCommands(agents, auth) {
   }
 }
 
-function detectRepo() {
+function requireGitRepo() {
+  if (!commandExists("git")) {
+    throw new Error("git is required. Run init from a local checkout of the repository.");
+  }
   try {
-    run("git", ["rev-parse", "--show-toplevel"]);
-    return run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+    run("git", ["rev-parse", "--is-inside-work-tree"]);
   } catch {
-    throw new Error("Run init from inside a GitHub repository that `gh repo view` can resolve.");
+    throw new Error("Run init from inside a git repository.");
+  }
+}
+
+function detectGitHub() {
+  if (!commandExists("gh")) {
+    return { available: false, repo: "", reason: "GitHub CLI was not found." };
+  }
+  try {
+    run("gh", ["auth", "status"]);
+  } catch {
+    return { available: false, repo: "", reason: "GitHub CLI is not authenticated." };
+  }
+  try {
+    const repo = run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+    return { available: true, repo, reason: "" };
+  } catch {
+    return { available: false, repo: "", reason: "GitHub CLI could not resolve this repository." };
   }
 }
 
@@ -293,19 +312,39 @@ async function collectCodexAuth() {
   return base64File(CODEX_AUTH_PATH);
 }
 
-async function configureGitHub(repo, agents, auth) {
+async function collectAuth(agents, detected) {
+  const auth = {};
+  if (agents.includes("claude")) {
+    auth.claude = await collectClaudeAuth(detected);
+  }
+  if (agents.includes("codex")) {
+    auth.codexAuthB64 = await collectCodexAuth();
+  }
+  return auth;
+}
+
+async function configureGitHub(github, agents, detected) {
+  if (!github.available) {
+    log.warn(`${github.reason} Skipping automatic GitHub setup.`);
+    console.log("");
+    log.info("Set these in GitHub repo settings or run:");
+    printManualGitHubCommands(agents);
+    return;
+  }
+
   const shouldSet = unwrapPrompt(await confirm({
-    message: `Set GitHub secrets and variables on ${repo} now?`,
+    message: `Set GitHub secrets and variables on ${github.repo} now?`,
     initialValue: true,
   }));
   if (!shouldSet) {
     log.warn("Skipped GitHub settings.");
     console.log("");
-    log.info("Run these manually:");
-    printManualGitHubCommands(agents, auth);
+    log.info("Set these in GitHub repo settings or run:");
+    printManualGitHubCommands(agents);
     return;
   }
 
+  const auth = await collectAuth(agents, detected);
   const s = spinner();
   s.start("Setting GitHub repository settings");
   try {
@@ -358,19 +397,9 @@ async function writeWorkflow() {
 async function init() {
   intro("Scrimba PR Explainer");
 
-  if (!commandExists("git")) {
-    throw new Error("git is required. Run init from a local checkout of the repository.");
-  }
-  if (!commandExists("gh")) {
-    throw new Error("GitHub CLI is required. Install gh and authenticate with `gh auth login`.");
-  }
-  try {
-    run("gh", ["auth", "status"]);
-  } catch {
-    throw new Error("GitHub CLI is installed but not authenticated. Run `gh auth login`, then rerun init.");
-  }
+  requireGitRepo();
 
-  const repo = detectRepo();
+  const github = detectGitHub();
   const detected = detectedAgents();
   const detectedNames = detectedAgentNames(detected);
   log.info([
@@ -399,15 +428,7 @@ async function init() {
     ],
   }));
 
-  const auth = {};
-  if (agents.includes("claude")) {
-    auth.claude = await collectClaudeAuth(detected);
-  }
-  if (agents.includes("codex")) {
-    auth.codexAuthB64 = await collectCodexAuth();
-  }
-
-  await configureGitHub(repo, agents, auth);
+  await configureGitHub(github, agents, detected);
   await writeWorkflow();
 
   log.info(`Next:\n  git add ${WORKFLOW_PATH}\n  git commit -m "Add Scrimba PR Explainer"\n  git push`);
