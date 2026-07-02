@@ -101,6 +101,7 @@ jobs:
           agents: ${{ github.event.inputs.agents || github.event.inputs.agent || vars.SCRIMBA_PR_EXPLAINER_AGENTS || vars.SCRIMBA_PR_EXPLAINER_AGENT }}
           pr-number: ${{ github.event.inputs.pr_number || '' }}
           mcp-url: ${{ vars.SCRIMBA_PR_EXPLAINER_MCP_URL || 'https://scrimba.com/explain/mcp' }}
+          allow-forks: ${{ vars.SCRIMBA_PR_EXPLAINER_ALLOW_FORKS || 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
@@ -169,6 +170,7 @@ These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
 | `agent` | `""` | Singular alias for `agents`, such as `claude`. |
 | `pr-number` | `""` | PR number to explain when running manually. |
 | `mcp-url` | `https://scrimba.com/explain/mcp` | Scrimba MCP server URL. |
+| `allow-forks` | `false` | Set to `true` to allow explainers on fork PRs. |
 
 If `agents` and `agent` are both empty, the action chooses an agent from the available secrets, preferring Claude when both are absent.
 

@@ -4,6 +4,7 @@ set -euo pipefail
 WORK_DIR=".scrimba-pr-explainer"
 AGENTS_DIR="$WORK_DIR/agents"
 DEFAULT_MCP_URL="https://scrimba.com/explain/mcp"
+EXPLAINER_URL_REGEX='https://[A-Za-z0-9._:-]+/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?'
 
 log_status() {
   printf '[scrimba-pr-explainer] %s\n' "$1"
@@ -93,16 +94,24 @@ resolve_pr_context() {
   fi
 
   gh pr view "$PR_NUMBER" \
-    --json number,title,body,url,baseRefName,baseRefOid,headRefName,headRefOid,author,files \
+    --json number,title,body,url,baseRefName,baseRefOid,headRefName,headRefOid,author,files,isCrossRepository \
     > "$WORK_DIR/pr.json"
 
   BASE_SHA="$(jq -r .baseRefOid "$WORK_DIR/pr.json")"
   HEAD_SHA="$(jq -r .headRefOid "$WORK_DIR/pr.json")"
+  IS_CROSS_REPOSITORY="$(jq -r .isCrossRepository "$WORK_DIR/pr.json")"
 
   jq -r '.files[] | "- \(.path) (+\(.additions)/-\(.deletions))"' "$WORK_DIR/pr.json" > "$WORK_DIR/diffstat.txt"
   gh pr diff "$PR_NUMBER" --patch --color never > "$WORK_DIR/pr.diff"
 
   log_status "Explaining PR #$PR_NUMBER at $HEAD_SHA"
+}
+
+enforce_fork_policy() {
+  if [ "${IS_CROSS_REPOSITORY:-false}" = "true" ] && [ "${SCRIMBA_PR_EXPLAINER_ALLOW_FORKS:-}" != "true" ]; then
+    echo "::error::PR #$PR_NUMBER is from a fork. Set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true only if you trust fork PR content not to prompt-inject the selected agent."
+    exit 1
+  fi
 }
 
 prepare_mcp_config() {
@@ -258,9 +267,9 @@ IFS=',' read -r -a AGENTS <<< "$SCRIMBA_PR_EXPLAINER_AGENTS"
 for agent in "${AGENTS[@]}"; do
   dir=".scrimba-pr-explainer/agents/$agent"
   status="$(cat "$dir/status.txt" 2>/dev/null || echo "Queued")"
-  url="$(cat "$dir/url.txt" 2>/dev/null || true)"
+  url="$(grep -Eom 1 'https://[A-Za-z0-9._:-]+/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?' "$dir/url.txt" 2>/dev/null || true)"
   if [ -z "$url" ] && [ -s "$dir/live-guide-url.txt" ]; then
-    url="$(tr -d '\r\n ' < "$dir/live-guide-url.txt")"
+    url="$(grep -Eom 1 'https://[A-Za-z0-9._:-]+/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?' "$dir/live-guide-url.txt" 2>/dev/null || true)"
   fi
   skip_reason="$(cat "$dir/skip-reason.txt" 2>/dev/null || true)"
 
@@ -443,7 +452,7 @@ watch_agent_progress() {
     for agent in "${RESOLVED_AGENTS[@]}"; do
       local dir="$AGENTS_DIR/$agent"
       if [ ! -s "$dir/url.txt" ] && [ -s "$dir/live-guide-url.txt" ]; then
-        tr -d '\r\n ' < "$dir/live-guide-url.txt" > "$dir/url.txt"
+        grep -Eom 1 "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" > "$dir/url.txt" 2>/dev/null || true
         if [ -s "$dir/url.txt" ]; then
           echo "Generating" > "$dir/status.txt"
           log_status "Live explainer URL detected for $agent; updating PR comment."
@@ -480,12 +489,12 @@ extract_agent_result() {
   fi
 
   if [ -s "$dir/live-guide-url.txt" ]; then
-    tr -d '\r\n ' < "$dir/live-guide-url.txt" > "$dir/url.txt"
+    grep -Eom 1 "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" > "$dir/url.txt" 2>/dev/null || true
   fi
 
-  guide_url="$(grep -hEo 'https://[^[:space:])<>"]+/explain/[A-Za-z0-9_-]+(\?claim=[^[:space:])<>"]+)?' "$dir/live-guide-url.txt" "$dir/claude-stream.jsonl" "$dir/codex-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | grep 'claim=' | tail -n 1 || true)"
+  guide_url="$(grep -hEo "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" "$dir/claude-stream.jsonl" "$dir/codex-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | grep '?claim=' | tail -n 1 || true)"
   if [ -z "$guide_url" ]; then
-    guide_url="$(grep -hEo 'https://[^[:space:])<>"]+/explain/[A-Za-z0-9_-]+' "$dir/live-guide-url.txt" "$dir/claude-stream.jsonl" "$dir/codex-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | tail -n 1 || true)"
+    guide_url="$(grep -hEo "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" "$dir/claude-stream.jsonl" "$dir/codex-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | tail -n 1 || true)"
   fi
   if [ -n "$guide_url" ]; then
     echo "$guide_url" > "$dir/url.txt"
@@ -586,6 +595,7 @@ main() {
   mkdir -p "$WORK_DIR"
   resolve_agents
   resolve_pr_context
+  enforce_fork_policy
   prepare_mcp_config
   prepare_prompts
   write_comment_helpers

@@ -161,6 +161,7 @@ jobs:
           agents: \${{ github.event.inputs.agents || github.event.inputs.agent || vars.SCRIMBA_PR_EXPLAINER_AGENTS || vars.SCRIMBA_PR_EXPLAINER_AGENT }}
           pr-number: \${{ github.event.inputs.pr_number || '' }}
           mcp-url: \${{ vars.SCRIMBA_PR_EXPLAINER_MCP_URL || 'https://scrimba.com/explain/mcp' }}
+          allow-forks: \${{ vars.SCRIMBA_PR_EXPLAINER_ALLOW_FORKS || 'false' }}
         env:
           GH_TOKEN: \${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}

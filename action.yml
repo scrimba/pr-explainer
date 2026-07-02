@@ -18,6 +18,10 @@ inputs:
     description: Scrimba MCP URL.
     required: false
     default: https://scrimba.com/explain/mcp
+  allow-forks:
+    description: Set to true to allow PR explainers on fork PRs.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -29,4 +33,5 @@ runs:
         SCRIMBA_PR_EXPLAINER_INPUT_AGENT: ${{ inputs.agent }}
         SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER: ${{ inputs.pr-number }}
         SCRIMBA_PR_EXPLAINER_MCP_URL: ${{ inputs.mcp-url }}
+        SCRIMBA_PR_EXPLAINER_ALLOW_FORKS: ${{ inputs.allow-forks }}
       run: "$GITHUB_ACTION_PATH/scripts/run-action.sh"
