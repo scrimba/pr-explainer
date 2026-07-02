@@ -19,7 +19,7 @@ The init command:
 - detects Claude Code and Codex locally
 - asks whether to use Claude, Codex, or both
 - writes `.github/workflows/scrimba-pr-explainer.yml`
-- optionally sets the required GitHub variables and secrets when `gh` is available and authenticated
+- optionally sets the required GitHub secrets when `gh` is available and authenticated
 - prints the manual setup commands when automatic GitHub setup is unavailable or skipped
 - does not commit anything
 
@@ -31,7 +31,7 @@ The init command:
 - At least one supported agent:
   - Claude Code with a Claude Code OAuth token
   - Codex with `~/.codex/auth.json`
-- Optional: GitHub CLI installed and authenticated with `gh auth login` if you want the installer to set repo variables and secrets for you
+- Optional: GitHub CLI installed and authenticated with `gh auth login` if you want the installer to set repo secrets for you
 
 This action is designed for subscription-based CLI auth. You do not need LLM API keys.
 
@@ -64,18 +64,12 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
-      agents:
-        description: Comma-separated agents to use, e.g. claude,codex
-        required: false
-        default: ""
-        type: string
-      agent:
-        description: Singular alias for agents, e.g. claude
-        required: false
-        default: ""
-        type: string
       pr_number:
         description: PR number to explain when running manually
+        required: false
+        type: string
+      agents:
+        description: Override agents for this run, e.g. claude,codex
         required: false
         type: string
 
@@ -85,7 +79,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: scrimba-pr-explainer-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.ref }}
+  group: scrimba-pr-explainer-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -94,7 +88,8 @@ jobs:
     steps:
       - uses: scrimba/pr-explainer@<ref>
         with:
-          agents: claude,codex
+          agents: ${{ inputs.agents || 'claude,codex' }}
+          pr-number: ${{ inputs.pr_number || '' }}
           allow-forks: false
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,7 +97,7 @@ jobs:
           SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64: ${{ secrets.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 }}
 ```
 
-The action handles checkout, Node setup, PR metadata, repository variables, prompt logging, agent execution, and PR comments. The generated workflow only owns triggers, token permissions, concurrency, workflow-dispatch inputs, public action inputs, and secrets.
+The action handles checkout, Node setup, PR metadata, prompt logging, agent execution, and PR comments. The generated workflow owns everything contextual: triggers, token permissions, concurrency, workflow-dispatch inputs, action inputs, and secrets.
 
 Replace `<ref>` with the action ref you want to run, such as `main` while testing unreleased changes or a versioned ref after release.
 
@@ -154,23 +149,10 @@ These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
 | Input | Default | Description |
 |---|---:|---|
 | `agents` | `""` | Comma-separated agents to run, such as `claude,codex`. |
-| `allow-forks` | `""` | Set to `true` to allow explainers on fork PRs. |
+| `pr-number` | `""` | PR number to explain. Empty resolves the PR from the triggering event. |
+| `allow-forks` | `"false"` | Set to `true` to allow explainers on fork PRs. |
 
 If `agents` is empty, the action chooses an agent from the available secrets, preferring Claude when both are absent.
-
-## Repository Variables
-
-These are GitHub repository variables read by the action.
-
-| Variable | Description |
-|---|---|
-| `SCRIMBA_PR_EXPLAINER_AGENTS` | Comma-separated agents to run, such as `claude,codex`. |
-| `SCRIMBA_PR_EXPLAINER_AGENT` | Singular alias for one agent. |
-| `SCRIMBA_PR_EXPLAINER_MCP_URL` | Optional override for the Scrimba MCP URL. Defaults to production Scrimba. |
-| `SCRIMBA_PR_EXPLAINER_ALLOW_FORKS` | Set to `true` to run on fork PRs. Defaults to disabled. |
-
-The action reads these repository variables directly. The generated workflow does not need to reference them.
-When a repository variable is set, it overrides the corresponding `with:` input.
 
 ## Secrets
 
@@ -183,10 +165,11 @@ When a repository variable is set, it overrides the corresponding `with:` input.
 
 Fork PRs are skipped by default.
 
-To allow them:
+To allow them, set the action input in your workflow:
 
-```bash
-gh variable set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS --body true
+```yaml
+with:
+  allow-forks: true
 ```
 
 Only enable this for repositories where you trust fork PRs not to execute prompt injections. These explainers are created by your selected agent using PR content, and that agent has access to the checked-out repository and any secrets passed to the job.

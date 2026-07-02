@@ -20,9 +20,6 @@ require_cmd() {
 resolve_agents() {
   local raw_agents
   raw_agents="${SCRIMBA_PR_EXPLAINER_AGENTS:-}"
-  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_AGENT:-}"
-  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_INPUT_AGENTS:-}"
-  [ -n "$raw_agents" ] || raw_agents="${SCRIMBA_PR_EXPLAINER_INPUT_AGENT:-}"
 
   if [ -z "$raw_agents" ]; then
     if [ -n "${SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
@@ -87,8 +84,8 @@ resolve_pr_context() {
 
   if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
     PR_NUMBER="$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
-  elif [ -n "${SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER:-}" ]; then
-    PR_NUMBER="$SCRIMBA_PR_EXPLAINER_INPUT_PR_NUMBER"
+  elif [ -n "${SCRIMBA_PR_EXPLAINER_PR_NUMBER:-}" ]; then
+    PR_NUMBER="$SCRIMBA_PR_EXPLAINER_PR_NUMBER"
   else
     PR_NUMBER="$(gh pr view --json number --jq .number)"
   fi
@@ -108,12 +105,8 @@ resolve_pr_context() {
 }
 
 enforce_fork_policy() {
-  local allow_forks
-  allow_forks="${SCRIMBA_PR_EXPLAINER_ALLOW_FORKS:-}"
-  [ -n "$allow_forks" ] || allow_forks="${SCRIMBA_PR_EXPLAINER_INPUT_ALLOW_FORKS:-}"
-
-  if [ "${IS_CROSS_REPOSITORY:-false}" = "true" ] && [ "$allow_forks" != "true" ]; then
-    echo "::error::PR #$PR_NUMBER is from a fork. Set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true only if you trust fork PR content not to prompt-inject the selected agent."
+  if [ "${IS_CROSS_REPOSITORY:-false}" = "true" ] && [ "${SCRIMBA_PR_EXPLAINER_ALLOW_FORKS:-}" != "true" ]; then
+    echo "::error::PR #$PR_NUMBER is from a fork. Set the allow-forks action input to true only if you trust fork PR content not to prompt-inject the selected agent."
     exit 1
   fi
 }

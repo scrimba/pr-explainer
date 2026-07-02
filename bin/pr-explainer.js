@@ -15,7 +15,6 @@ import {
   password,
   select,
   spinner,
-  tasks,
 } from "@clack/prompts";
 
 const WORKFLOW_PATH = ".github/workflows/scrimba-pr-explainer.yml";
@@ -93,7 +92,7 @@ function unwrapPrompt(value) {
   return value;
 }
 
-function workflowYaml(agents) {
+function workflowYaml(agents, allowForks) {
   const agentsValue = agents.join(",");
   return `name: Scrimba PR Explainer
 
@@ -106,6 +105,10 @@ on:
         description: PR number to explain when running manually
         required: false
         type: string
+      agents:
+        description: Override agents for this run, e.g. claude,codex
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -113,7 +116,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: scrimba-pr-explainer-\${{ github.event.pull_request.number || github.event.inputs.pr_number || github.ref }}
+  group: scrimba-pr-explainer-\${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -124,8 +127,9 @@ jobs:
       - name: Create Scrimba PR explainer
         uses: ${ACTION_REF}
         with:
-          agents: ${agentsValue}
-          allow-forks: false
+          agents: \${{ inputs.agents || '${agentsValue}' }}
+          pr-number: \${{ inputs.pr_number || '' }}
+          allow-forks: ${allowForks}
         env:
           GH_TOKEN: \${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
@@ -139,10 +143,6 @@ function base64File(path) {
 
 function setSecret(name, value) {
   run("gh", ["secret", "set", name], { input: `${value}\n` });
-}
-
-function setVariable(name, value) {
-  run("gh", ["variable", "set", name, "--body", value]);
 }
 
 function logManualGitHubCommands(agents) {
@@ -344,27 +344,17 @@ async function configureGitHub(github, agents, detected) {
     log.warn("Claude token was not provided, so SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN was not set.");
     log.info("Run this when you have a token:\n  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
   }
+}
 
+async function askAllowForks() {
   note("Fork PRs can contain prompt injection. These explainers are created by your selected agent, using PR content, with access to the checked-out repository. Only enable this if you trust the PRs that will run this workflow.", "Fork PR Safety");
-  const allowForks = unwrapPrompt(await confirm({
+  return unwrapPrompt(await confirm({
     message: "Allow PR explainers to run on fork PRs?",
     initialValue: false,
   }));
-  if (allowForks) {
-    await tasks([
-      {
-        title: "Set SCRIMBA_PR_EXPLAINER_ALLOW_FORKS",
-        task: () => {
-          setVariable("SCRIMBA_PR_EXPLAINER_ALLOW_FORKS", "true");
-          return "variable SCRIMBA_PR_EXPLAINER_ALLOW_FORKS=true";
-        },
-      },
-    ]);
-    log.success(`GitHub repository ${github.repo} updated`);
-  }
 }
 
-async function writeWorkflow(agents) {
+async function writeWorkflow(agents, allowForks) {
   if (existsSync(WORKFLOW_PATH)) {
     const overwrite = unwrapPrompt(await confirm({
       message: `${WORKFLOW_PATH} already exists. Overwrite?`,
@@ -377,7 +367,7 @@ async function writeWorkflow(agents) {
   }
 
   mkdirSync(dirname(WORKFLOW_PATH), { recursive: true });
-  writeFileSync(WORKFLOW_PATH, workflowYaml(agents));
+  writeFileSync(WORKFLOW_PATH, workflowYaml(agents, allowForks));
   log.success(`Wrote ${WORKFLOW_PATH}`);
   return true;
 }
@@ -392,7 +382,7 @@ async function init() {
 
   note(`This installer adds a GitHub Action that creates Scrimba PR explainer videos.
 
-It can also set up the required GitHub tokens and repository variables.`);
+It can also set up the required GitHub secrets.`);
 
   let n = []
 
@@ -432,7 +422,8 @@ It can also set up the required GitHub tokens and repository variables.`);
     ],
   }));
 
-  await writeWorkflow(agents);
+  const allowForks = await askAllowForks();
+  await writeWorkflow(agents, allowForks);
   await configureGitHub(github, agents, detected);
 
   log.info(`Next:\n  git add ${WORKFLOW_PATH}\n  git commit -m "Add Scrimba PR Explainer"\n  git push`);
