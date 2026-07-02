@@ -1,8 +1,10 @@
-# Scrimba PR Explainer
+# Scrimba PR Video Explainer
 
-Create Scrimba explainers for GitHub pull requests with Claude Code, Codex, or both.
+Create Scrimba explainer videos for GitHub pull requests with Claude Code, Codex, or both.
 
-The action checks out the PR, lets the selected agent inspect the code and diff, creates a Scrimba explainer through the Scrimba MCP server, and keeps one PR comment updated with the latest explainer links.
+The action checks out the PR, lets the selected agent inspect the code and diff, creates a Scrimba video explainer through the Scrimba MCP server, and keeps one PR comment updated with the latest explainer links.
+
+Example video: https://scrimba.com/explain/guide0b4eg1luj
 
 ## Quick Start
 
@@ -48,7 +50,7 @@ It posts one PR comment that updates as each selected agent:
 - finishes
 - fails
 
-Multiple agents run in parallel.
+Multiple agents run in parallel, each producing its own video explainer link.
 
 ## Workflow Example
 
