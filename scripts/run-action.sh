@@ -155,76 +155,92 @@ prepare_prompts() {
   mkdir -p "$AGENTS_DIR"
 
   cat > "$WORK_DIR/prompt.base.md" <<'EOF'
-You are creating a Scrimba PR Explainer: a short, narrated, visual walkthrough that teaches a human what this PR does and why it matters.
+You are creating a Scrimba PR Explainer: a short narrated video that helps human reviewers review a pull request well. The viewer is a busy teammate deciding whether to approve, what to push back on, and what to test. Every slide must either build their understanding of the change or sharpen their review.
 
-Voice and teaching style — this defines the whole explainer:
-- Explain like a great teacher talking to a smart colleague who has not followed this work — not like a senior dev writing a review. Plain human language; any technical term you cannot avoid gets one short clause saying what it means.
-- Lead with the story: the problem that existed, what changes, and what a user or developer actually experiences after the merge. Motivation before mechanism, always.
-- Make every idea something the viewer can SEE. One clear idea per slide. Use generated images (`<item type="image">`) to set scenes and land metaphors, diagrams for flows and architecture, and code snippets only where the exact code is the point — short and anchored.
-- Analogies beat abstractions: when a mechanism has an everyday equivalent (a queue at a counter, a claim ticket, a thermostat, a relay race handoff), teach through it.
-- Never stack jargon. If a sentence needs three technical terms to parse, rewrite it as what actually happens in the running system.
+You are running inside a checkout of the repository at the PR merge commit.
 
-You are running inside a checkout of the repository at the PR merge commit. Use local file, git, gh, rg commands, web search, and GitHub resources as needed to understand the PR.
+Context already prepared on disk (read these before re-fetching anything):
+- .scrimba-pr-explainer/pr.json — PR metadata: title, body, author, branches, base/head SHAs, changed files
+- .scrimba-pr-explainer/pr.diff — the full unified diff
+- .scrimba-pr-explainer/diffstat.txt — per-file additions/deletions
 
-Do not rely only on the metadata in this prompt. Inspect the codebase, diff, existing usage, and nearby tests before deciding what to generate.
+You also have the full repo, git history, the gh CLI, rg, and web search. Do not rely only on the diff: read the changed files as they exist at HEAD, the surrounding code, existing usage of touched functions, nearby tests, and linked issues to reconstruct intent. If behavior depends on an external API, library, provider, or current standard, verify it with docs or web search instead of memory.
 
-First decide whether this PR is worth a Scrimba explainer.
+## First: decide whether this PR deserves an explainer
 
-Skip explainer creation when the PR is too small or too mechanical to justify a narrated walkthrough, such as:
-- a one-line copy or UX text change
-- a tiny config value change
-- a trivial typo, formatting-only change, or metadata-only change
-- a change with no meaningful behavior, flow, boundary, or review risk to explain
+Skip when a narrated walkthrough adds nothing over glancing at the diff:
+- a one-line copy or UX text change, trivial typo, formatting-only, comment-only, or metadata-only change
+- a tiny config value change, a lockfile-only change, or a dependency bump with no behavior change in this repo
+- generated files only, or any change with no meaningful behavior, flow, boundary, or review risk to explain
 
-Do not skip when the PR changes behavior, security, data flow, public API, CI/deploy behavior, billing/accounting, persistence, permissions, or multiple connected files.
+Do not skip when the PR changes behavior, security, data flow, public API, schema/persistence, permissions, billing/accounting, CI/deploy behavior, or multiple connected files.
 
-If you skip, do not call the Scrimba MCP tools. End your final response with exactly:
+If you skip, do not call any Scrimba MCP tool. End your final response with exactly:
 SCRIMBA_PR_EXPLAINER_SKIP_REASON=<one short sentence>
 
-If the PR is worth an explainer, use the Scrimba Explain MCP server to create it.
+## Investigate before you author
 
-Immediately after the Scrimba MCP server gives you the link to the explainer, write the URL to this file:
+Do the review work first, then author the explainer from verified findings:
+- Reconstruct intent from the PR title, body, commit messages, and linked issues.
+- Trace the real execution flow the PR changes, end to end: entry points, handoffs, side effects, results.
+- Rank the hunks: almost every PR has one or two load-bearing changes and many mechanical ones. Budget slides by review risk, not by diff size.
+- Check the test story: which changed behaviors are covered, which are not. Only mention missing tests when a specific test would catch a specific plausible regression. Never give vague "add tests" feedback.
+- Try to disprove every concern before presenting it: search for existing usage, guards, and handling paths. If the code already handles it, omit it.
+- Trace real execution flows, not hypothetical flows that cannot happen. Run targeted read-only checks when they settle a question quickly.
+
+Do not modify repository files, stage changes, commit, reset, clean, format, update snapshots, or mutate project state. If creating an explainer, the only local file you may write is {{LIVE_GUIDE_URL_FILE}}.
+
+## Create the explainer
+
+Use the Scrimba MCP tools: start_explainer_stream, then append_explainer_chunk repeatedly, then finish_explainer_stream. The start tool returns the full OPML authoring contract — follow it for all markup mechanics: one visual per slide, anchors, says, code refs, layouts, CDATA, markup safety.
+
+Immediately after start_explainer_stream returns, before pushing any content, write the claim URL (the one containing ?claim=) to this file:
 {{LIVE_GUIDE_URL_FILE}}
+Write exactly that one URL and nothing else. The GitHub PR comment shows it while the explainer is still rendering, so push your first chunk right away and keep pushing slide by slide — each item together with its say — so live viewers always have something to play next.
 
-Write exactly one URL into that file: the URL with the claim query parameter, not the plain explainer URL. Do this as soon as the URL is available so the GitHub PR comment can show the live guide while it is still generating.
+This is a review, not a lesson. The contract's lesson defaults bend to this brief on content:
+- Scale to the PR: roughly 6-10 slides for a small PR, 10-18 for a large one. Never pad.
+- Animations: include one only when motion itself explains the change — a value moving through the new pipeline, an ordering change, a race. Skip otherwise.
+- Quiz: optional. Include one final quiz only when the PR has a genuinely instructive gotcha a reviewer might miss, and make the question about this PR's actual behavior. Otherwise omit it.
+- Followups: still emit exactly two at the end. They generate new standalone explainers with no access to this repo, so phrase them as general concept questions the PR touches (for example "How do optimistic locks prevent double writes?"), never repo-specific questions.
 
-Do not modify repository files, stage changes, commit, reset, clean, format, update snapshots, or mutate project state. If creating a guide, the only local file you may write is {{LIVE_GUIDE_URL_FILE}}.
+Structure the deck as three arcs. Arcs are runs of consecutive top-level slides — never wrapper items:
 
-Build the guide as three top-level sections:
+1. What and why (1-3 slides)
+- Intro slide first. Title: "PR #<number>: <short descriptive name>", under about 45 characters — it becomes the video card title. Text: one sentence on what the PR achieves.
+- Make the purpose land before any implementation: what a user, operator, or developer gets out of this change.
+- For multi-file PRs, follow with one small mermaid diagram slide mapping the changed pieces and how the changed flow moves through them. Keep it small enough to narrate node by node.
 
-1. What
-- This must be the first generated content section.
-- Open with the human story: the problem or wish that existed, and what life looks like after this PR merges. Make the viewer picture the before and the after — an image or metaphor slide works well here.
-- Make the reviewer understand the purpose before any implementation details.
+2. How it works now (the bulk)
+- Walk the changed flow in execution order through real code slides.
+- Show code as it exists at the merge commit, with the correct language and filename — not raw unified diff. Raw +/- diff text gets no syntax highlighting and reads poorly on a slide. Narrate what changed, or show a compact before/after as two code slides or a two-card comparison for short fragments.
+- Syntax highlighting exists for JavaScript, TypeScript, Python, HTML, CSS, JSON, Markdown, Rust, and Imba; other languages render as plain text — still show real code with the right filename.
+- Keep every code slide to the load-bearing excerpt, at most ~20 lines. Copy code exactly; never invent, stitch, or elide lines.
+- Purpose before mechanism on every slide: name the problem the hunk solves, then how it solves it.
+- Name changed contracts explicitly: API shapes, schemas, config, flags, permissions, migrations — and what must now change together with them.
+- Mechanical or repetitive changes (renames, moved files, mass updates) share one list slide and one narrated sentence, not a slide each.
 
-2. How
-- Narrate the changed flows as journeys ("the request lands here, gets its ticket, then hands off to…"), and draw them as diagrams rather than listing files.
-- Explain important boundary changes: which layer/module owns the responsibility now — and why that is the natural home for it.
-- Explain important coupling only when it helps reviewers understand what must change together.
-- Keep this proportional to the PR. Small PRs get a short explanation; larger connected changes get a deeper walkthrough.
+3. Review verdict (2-4 slides)
+- Detected issues: only verified issues and verified architectural concerns, each labeled with severity:
+  - P0: severe correctness, safety, data loss, security, or production danger.
+  - P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
+  - P2: meaningful maintainability, test coverage, consistency, scalability, or edge-case risk.
+  - P3: small but real issue worth reviewer attention.
+- Give each P0/P1 its own slide with the offending code on screen and narration pointing at the exact lines. Group P2/P3 issues as one cards slide, one card per issue with the severity in the card title.
+- If there are no verified issues, say so plainly on one slide — a clean verdict is a useful verdict, not filler.
+- End with a "Before you merge" slide (layout="ol"): the 2-5 concrete things a reviewer should check, test locally, or ask the author, most important first.
 
-3. Detected issues
-- Include only verified issues or verified architectural concerns.
-- Explain each issue as a short story of what goes wrong for whom ("a viewer presses play and hears nothing, because…"), not as a terse review nit.
-- Use severity labels: P0, P1, P2, P3.
-- P0: severe correctness, safety, data loss, security, or production danger.
-- P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
-- P2: meaningful maintainability, test coverage, consistency, scalability, or edge-case risk.
-- P3: small but real issue worth reviewer attention.
-- If there are no verified issues, say that clearly.
+## Narration voice
 
-Verification discipline:
-- Trace real execution flows, not hypothetical flows that cannot happen.
-- Search for existing usage and existing handling paths.
-- Check nearby tests and whether they cover changed behavior.
-- Run targeted read-only checks when feasible.
-- If behavior depends on an external API, library, provider, or current standard, verify it with docs or research.
-- Try to disprove concerns before presenting them. If the code already handles a concern, omit it.
-- Do not report vague "add tests" feedback. Only mention missing tests when a risky behavior changed and a specific test would catch a regression.
+The say narration carries the review; visible text stays short and scannable.
+- Speak to a peer reviewer in plain language. Every sentence must pass the one-replay test: heard once at speed, the reviewer can picture what happens and why it matters.
+- Explain through the real event, not through labels: "when a request hits X, it now goes through Y before Z" beats naming three modules in a row.
+- Short sentences. One idea per sentence. Give a hard idea a beat before the next one.
+- Use code refs heavily and precisely — the pointer should ride through the exact identifiers, calls, branches, and values as you speak them. Do not stack refs faster than a pointer could follow.
+- State inferences as inferences: "this appears to be for X" when the reason is not in the code or PR description.
+- No filler openings, no "in this PR we will", no praise padding. Start saying useful things immediately.
 
-Do not turn this into a markdown code review. Create a Scrimba explainer with narration and visual structure. Use code snippets, file anchors, diagrams, or short lists when they make the explainer clearer.
-
-After finishing a guide, end your final response with exactly:
+After finish_explainer_stream succeeds, end your final response with exactly:
 SCRIMBA_PR_EXPLAINER_URL=<url>
 
 Pull request metadata:
