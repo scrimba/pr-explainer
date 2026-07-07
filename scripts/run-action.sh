@@ -220,12 +220,12 @@ Write exactly that one URL and nothing else. The GitHub PR comment shows it whil
 
 The explainer covers, in order:
 
-1. What the PR does and why. The purpose must land before any implementation. Open with an intro slide titled "PR #<number>: <short name>" (under about 45 characters — it becomes the video card title) and one sentence on what the PR achieves.
+1. What the PR does and why. Lead with the human story: the problem or wish that existed, and what a user or developer actually experiences after the merge — make the viewer picture the before and the after. The purpose must land before any implementation. Open with an intro slide titled "PR #<number>: <short name>" (under about 45 characters — it becomes the video card title) and one sentence on what the PR achieves.
 
-2. How it does it. Walk the changed flow in execution order with real code on screen. Useful patterns, applied with judgment:
+2. How it does it. Narrate the changed flow in execution order as a journey — the request lands here, gets its ticket, hands off there — with real code on screen. Make every idea something the viewer can see: a diff, a diagram, an animation, or a short anchored snippet; one clear idea per slide. Useful patterns, applied with judgment:
 - side-by-side diff slides (type="diff") when the change itself is the story; plain code slides showing the merge-commit state when the new behavior is
-- a small mermaid diagram to orient reviewers when several pieces connect
-- purpose before mechanism on every slide; name changed contracts (API shapes, schemas, config, flags, permissions, migrations) and what must now change together with them
+- a small mermaid diagram to orient reviewers when several pieces connect — draw the flow rather than listing files
+- purpose before mechanism on every slide; name changed contracts (API shapes, schemas, config, flags, permissions, migrations), what must now change together with them, and why the new owner is the natural home when responsibility moves
 - mechanical bulk (renames, moved files, mass updates) gets one list slide and one sentence — spend the saved time on the load-bearing hunks
 
 3. Verified issues. Only issues and architectural concerns you actually verified, each labeled with severity:
@@ -233,12 +233,14 @@ The explainer covers, in order:
 - P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
 - P2: meaningful maintainability, test coverage, consistency, scalability, or edge-case risk.
 - P3: small but real issue worth reviewer attention.
-Put serious issues on their own slides with the offending code on screen and narration pointing at the exact lines. If there are no verified issues, say so plainly — a clean verdict is a useful verdict, not filler. Close with the few concrete things a reviewer should check, test locally, or ask the author before merging.
+Narrate each issue as a short story of what goes wrong for whom — "a viewer presses play and hears nothing, because..." — never as a terse review nit. Put serious issues on their own slides with the offending code on screen and narration pointing at the exact lines. If there are no verified issues, say so plainly — a clean verdict is a useful verdict, not filler. Close with the few concrete things a reviewer should check, test locally, or ask the author before merging.
 
 ## Narration voice
 
 The say narration carries the review; visible text stays short and scannable.
-- Speak to a peer reviewer in plain language. Every sentence must pass the one-replay test: heard once at speed, the reviewer can picture what happens and why it matters.
+- Speak like a great teacher talking to a smart colleague who has not followed this work. Every sentence must pass the one-replay test: heard once at speed, the reviewer can picture what happens and why it matters.
+- Any technical term you cannot avoid gets one short clause saying what it means. Never stack jargon: if a sentence needs three technical terms to parse, rewrite it as what actually happens in the running system.
+- Analogies beat abstractions: when a mechanism has an everyday equivalent — a queue at a counter, a claim ticket, a relay handoff — teach through it, then ground it in the code.
 - Explain through the real event, not through labels: "when a request hits X, it now goes through Y before Z" beats naming three modules in a row.
 - Short sentences. One idea per sentence. Give a hard idea a beat before the next one.
 - Use code refs heavily and precisely — the pointer should ride through the exact identifiers, calls, branches, and values as you speak them. Do not stack refs faster than a pointer could follow.
