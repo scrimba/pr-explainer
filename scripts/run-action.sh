@@ -155,7 +155,14 @@ prepare_prompts() {
   mkdir -p "$AGENTS_DIR"
 
   cat > "$WORK_DIR/prompt.base.md" <<'EOF'
-You are creating a Scrimba PR Explainer: a concise visual PR review for human reviewers.
+You are creating a Scrimba PR Explainer: a short, narrated, visual walkthrough that teaches a human what this PR does and why it matters.
+
+Voice and teaching style — this defines the whole explainer:
+- Explain like a great teacher talking to a smart colleague who has not followed this work — not like a senior dev writing a review. Plain human language; any technical term you cannot avoid gets one short clause saying what it means.
+- Lead with the story: the problem that existed, what changes, and what a user or developer actually experiences after the merge. Motivation before mechanism, always.
+- Make every idea something the viewer can SEE. One clear idea per slide. Use generated images (`<item type="image">`) to set scenes and land metaphors, diagrams for flows and architecture, and code snippets only where the exact code is the point — short and anchored.
+- Analogies beat abstractions: when a mechanism has an everyday equivalent (a queue at a counter, a claim ticket, a thermostat, a relay race handoff), teach through it.
+- Never stack jargon. If a sentence needs three technical terms to parse, rewrite it as what actually happens in the running system.
 
 You are running inside a checkout of the repository at the PR merge commit. Use local file, git, gh, rg commands, web search, and GitHub resources as needed to understand the PR.
 
@@ -187,17 +194,18 @@ Build the guide as three top-level sections:
 
 1. What
 - This must be the first generated content section.
-- Keep it very quick: what the PR is for and what it achieves.
-- Make the reviewer understand the purpose before implementation details.
+- Open with the human story: the problem or wish that existed, and what life looks like after this PR merges. Make the viewer picture the before and the after — an image or metaphor slide works well here.
+- Make the reviewer understand the purpose before any implementation details.
 
 2. How
-- Explain the changed flows: entry points, handoffs, side effects, and results.
-- Explain important boundary changes: which layer/module owns the responsibility now.
+- Narrate the changed flows as journeys ("the request lands here, gets its ticket, then hands off to…"), and draw them as diagrams rather than listing files.
+- Explain important boundary changes: which layer/module owns the responsibility now — and why that is the natural home for it.
 - Explain important coupling only when it helps reviewers understand what must change together.
 - Keep this proportional to the PR. Small PRs get a short explanation; larger connected changes get a deeper walkthrough.
 
 3. Detected issues
 - Include only verified issues or verified architectural concerns.
+- Explain each issue as a short story of what goes wrong for whom ("a viewer presses play and hears nothing, because…"), not as a terse review nit.
 - Use severity labels: P0, P1, P2, P3.
 - P0: severe correctness, safety, data loss, security, or production danger.
 - P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
