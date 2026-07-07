@@ -85,6 +85,7 @@ concurrency:
 jobs:
   explain:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: scrimba/pr-explainer@<ref>
         with:
