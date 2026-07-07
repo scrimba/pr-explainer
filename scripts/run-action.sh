@@ -111,6 +111,22 @@ enforce_fork_policy() {
   fi
 }
 
+resolve_linked_issues() {
+  : > "$WORK_DIR/linked-issues.md"
+  local numbers issue
+  numbers="$(gh pr view "$PR_NUMBER" --json closingIssuesReferences \
+    --jq '.closingIssuesReferences[].number' 2>/dev/null | head -n 3 || true)"
+  for issue in $numbers; do
+    {
+      echo "Issue #$issue:"
+      gh issue view "$issue" --json title,body \
+        --jq '"Title: \(.title)\n\(.body // "(no body)")"' 2>/dev/null | head -c 4000 || true
+      echo
+      echo
+    } >> "$WORK_DIR/linked-issues.md"
+  done
+}
+
 prepare_mcp_config() {
   MCP_URL="${SCRIMBA_PR_EXPLAINER_MCP_URL:-$DEFAULT_MCP_URL}"
   [ -n "$MCP_URL" ] || MCP_URL="$DEFAULT_MCP_URL"
@@ -159,12 +175,9 @@ You are creating a Scrimba PR Explainer: a short narrated video that helps human
 
 You are running inside a checkout of the repository at the PR merge commit.
 
-Context already prepared on disk (read these before re-fetching anything):
-- .scrimba-pr-explainer/pr.json — PR metadata: title, body, author, branches, base/head SHAs, changed files
-- .scrimba-pr-explainer/pr.diff — the full unified diff
-- .scrimba-pr-explainer/diffstat.txt — per-file additions/deletions
+This prompt ends with the complete PR data: metadata, description, linked issues, and diffstat. The full unified diff is on disk at .scrimba-pr-explainer/pr.diff — read and search that file. Do not re-fetch any of this from GitHub.
 
-You also have the full repo, git history, the gh CLI, rg, and web search. Do not rely only on the diff: read the changed files as they exist at HEAD, the surrounding code, existing usage of touched functions, nearby tests, and linked issues to reconstruct intent. If behavior depends on an external API, library, provider, or current standard, verify it with docs or web search instead of memory.
+You also have the full repo, git history, the gh CLI, rg, and web search. Do not rely only on the diff: read the changed files as they exist at HEAD, the surrounding code, existing usage of touched functions, and nearby tests to reconstruct intent. If behavior depends on an external API, library, provider, or current standard, verify it with docs or web search instead of memory.
 
 ## First: decide whether this PR deserves an explainer
 
@@ -234,12 +247,19 @@ The say narration carries the review; visible text stays short and scannable.
 After finish_explainer_stream succeeds, end your final response with exactly:
 SCRIMBA_PR_EXPLAINER_URL=<url>
 
-Pull request metadata:
+Pull request data:
 EOF
 
-  cat "$WORK_DIR/pr.json" >> "$WORK_DIR/prompt.base.md"
   {
+    jq -r '"PR #\(.number): \(.title)\nAuthor: \(.author.login)\nURL: \(.url)\nBase: \(.baseRefName) @ \(.baseRefOid)\nHead: \(.headRefName) @ \(.headRefOid)"' "$WORK_DIR/pr.json"
     echo
+    echo "Description:"
+    jq -r 'if (.body // "") == "" then "(none)" else .body end' "$WORK_DIR/pr.json"
+    echo
+    if [ -s "$WORK_DIR/linked-issues.md" ]; then
+      echo "Linked issues:"
+      cat "$WORK_DIR/linked-issues.md"
+    fi
     echo "Diffstat:"
     cat "$WORK_DIR/diffstat.txt"
   } >> "$WORK_DIR/prompt.base.md"
@@ -619,6 +639,7 @@ main() {
   resolve_agents
   resolve_pr_context
   enforce_fork_policy
+  resolve_linked_issues
   prepare_mcp_config
   prepare_prompts
   write_comment_helpers
