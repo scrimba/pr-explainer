@@ -21,12 +21,20 @@ const WORKFLOW_PATH = ".github/workflows/scrimba-pr-explainer.yml";
 const ACTION_REF = "scrimba/pr-explainer@main";
 const CODEX_AUTH_PATH = join(homedir(), ".codex", "auth.json");
 
+function exitOnInterrupt() {
+  cancel("Installation cancelled.");
+  process.exit(130);
+}
+
 function run(cmd, args, options = {}) {
   const res = spawnSync(cmd, args, {
     encoding: "utf8",
     stdio: options.stdio ?? "pipe",
     input: options.input,
   });
+  if (res.signal === "SIGINT" || res.signal === "SIGTERM") {
+    exitOnInterrupt();
+  }
   if (res.error) {
     throw res.error;
   }
@@ -55,7 +63,12 @@ function runClaudeSetupToken() {
     child.on("error", () => {
       resolve("");
     });
-    child.on("close", () => {
+    child.on("close", (code, signal) => {
+      // Ctrl+C lands on the child while it owns the terminal; treat it as
+      // the user cancelling the whole install, not a failed token attempt.
+      if (signal === "SIGINT" || signal === "SIGTERM" || code === 130) {
+        exitOnInterrupt();
+      }
       resolve(extractClaudeToken(output));
     });
   });
@@ -373,6 +386,9 @@ async function writeWorkflow(agents, allowForks) {
 }
 
 async function init() {
+  process.on("SIGINT", exitOnInterrupt);
+  process.on("SIGTERM", exitOnInterrupt);
+
   intro("Scrimba PR Explainer");
 
   requireGitRepo();
