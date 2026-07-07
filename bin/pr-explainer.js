@@ -38,9 +38,11 @@ function run(cmd, args, options = {}) {
 }
 
 function runClaudeSetupToken() {
+  // setup-token is interactive: it needs the real stdin for its prompts, so
+  // inherit it and tee stdout/stderr to the terminal while capturing the token.
   return new Promise((resolve) => {
     const child = spawn("claude", ["setup-token"], {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["inherit", "pipe", "pipe"],
     });
     let output = "";
 
@@ -48,9 +50,11 @@ function runClaudeSetupToken() {
     child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => {
       output += chunk;
+      process.stdout.write(chunk);
     });
     child.stderr?.on("data", (chunk) => {
       output += chunk;
+      process.stderr.write(chunk);
     });
     child.on("error", () => {
       resolve("");
@@ -232,15 +236,13 @@ async function collectClaudeAuth(detected) {
   }
 
   if (mode === "setup") {
-    const s = spinner();
-    s.start("Getting Claude token");
+    log.info("Running `claude setup-token` — follow its prompts in this terminal.");
     const token = await runClaudeSetupToken();
     if (token) {
-      s.stop("Claude token created");
+      log.success("Claude token created");
       return { token, source: "setup-token" };
     }
-    s.error("Could not read a token from Claude Code");
-    log.warn("Run `claude setup-token` yourself, then paste the token below.");
+    log.warn("Could not read a token from Claude Code. Run `claude setup-token` yourself, then paste the token below.");
   }
 
   const token = unwrapPrompt(await password({
