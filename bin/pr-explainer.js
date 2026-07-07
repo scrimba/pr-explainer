@@ -146,7 +146,7 @@ function base64File(path) {
 }
 
 function setSecret(name, value) {
-  run("gh", ["secret", "set", name], { input: `${value}\n` });
+  run("gh", ["secret", "set", name], { input: value });
 }
 
 function logManualGitHubCommands(agents) {
@@ -168,7 +168,7 @@ function logManualGitHubCommands(agents) {
   \`codex login --device-auth\`
 
  * Set token via:
-  \`base64 < ~/.codex/auth.json | gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64\``;
+  \`gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\\n')"\``;
   }
   note(body, "GitHub settings");
 }
