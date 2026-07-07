@@ -526,6 +526,7 @@ extract_agent_result() {
   local agent="$1"
   local dir="$AGENTS_DIR/$agent"
   local skip_reason guide_url
+  local sources=("$dir/live-guide-url.txt" "$dir/$agent-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt")
 
   skip_reason="$(sed -nE 's/^(\[assistant\] )?SCRIMBA_PR_EXPLAINER_SKIP_REASON=//p' "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | tail -n 1)"
   if [ -n "$skip_reason" ]; then
@@ -536,9 +537,9 @@ extract_agent_result() {
     grep -Eom 1 "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" > "$dir/url.txt" 2>/dev/null || true
   fi
 
-  guide_url="$(grep -hEo "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" "$dir/claude-stream.jsonl" "$dir/codex-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | grep '?claim=' | tail -n 1 || true)"
+  guide_url="$(grep -hEo "$EXPLAINER_URL_REGEX" "${sources[@]}" 2>/dev/null | grep '?claim=' | tail -n 1 || true)"
   if [ -z "$guide_url" ]; then
-    guide_url="$(grep -hEo "$EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" "$dir/claude-stream.jsonl" "$dir/codex-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | tail -n 1 || true)"
+    guide_url="$(grep -hEo "$EXPLAINER_URL_REGEX" "${sources[@]}" 2>/dev/null | tail -n 1 || true)"
   fi
   if [ -n "$guide_url" ]; then
     echo "$guide_url" > "$dir/url.txt"
