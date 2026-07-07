@@ -86,8 +86,9 @@ resolve_pr_context() {
     PR_NUMBER="$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
   elif [ -n "${SCRIMBA_PR_EXPLAINER_PR_NUMBER:-}" ]; then
     PR_NUMBER="$SCRIMBA_PR_EXPLAINER_PR_NUMBER"
-  else
-    PR_NUMBER="$(gh pr view --json number --jq .number)"
+  elif ! PR_NUMBER="$(gh pr view --json number --jq .number 2>/dev/null)"; then
+    echo "::error::No PR to explain: this run was not triggered by a pull request, no pr-number input was given, and $GITHUB_REF has no open PR. Enter a PR number when dispatching the workflow manually."
+    exit 1
   fi
 
   gh pr view "$PR_NUMBER" \
