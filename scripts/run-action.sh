@@ -192,43 +192,34 @@ Do not modify repository files, stage changes, commit, reset, clean, format, upd
 
 ## Create the explainer
 
-Use the Scrimba MCP tools: start_explainer_stream, then append_explainer_chunk repeatedly, then finish_explainer_stream. The start tool returns the full OPML authoring contract — follow it for all markup mechanics: one visual per slide, anchors, says, code refs, layouts, CDATA, markup safety.
+Use the Scrimba MCP tools: start_explainer_stream, then append_explainer_chunk repeatedly, then finish_explainer_stream. Call start_explainer_stream with visibility="unlisted" so the explainer stays viewable by anyone with the link after a team member claims it.
+
+The start tool returns the full OPML authoring contract — follow it for all markup mechanics: slides, anchors, says, code refs, diff items, diagrams, layouts, CDATA, markup safety. The contract is written for lessons, though. You are making a PR review, and on matters of content this brief overrides it:
+- Let the PR decide the explainer's length and shape. Use however many slides the review actually needs — no minimum section count, no padding toward lesson length.
+- Quiz: optional, not required. Include one only when the PR has a genuinely instructive gotcha a reviewer might miss, and ask about this PR's actual behavior.
+- Animations: only when motion itself explains the change. Skip otherwise.
+- Followups: still emit exactly two, but they generate new standalone explainers with no access to this repo — phrase them as general concept questions the PR touches, never repo-specific ones.
 
 Immediately after start_explainer_stream returns, before pushing any content, write the claim URL (the one containing ?claim=) to this file:
 {{LIVE_GUIDE_URL_FILE}}
 Write exactly that one URL and nothing else. The GitHub PR comment shows it while the explainer is still rendering, so push your first chunk right away and keep pushing slide by slide — each item together with its say — so live viewers always have something to play next.
 
-This is a review, not a lesson. The contract's lesson defaults bend to this brief on content:
-- Scale to the PR: roughly 6-10 slides for a small PR, 10-18 for a large one. Never pad.
-- Animations: include one only when motion itself explains the change — a value moving through the new pipeline, an ordering change, a race. Skip otherwise.
-- Quiz: optional. Include one final quiz only when the PR has a genuinely instructive gotcha a reviewer might miss, and make the question about this PR's actual behavior. Otherwise omit it.
-- Followups: still emit exactly two at the end. They generate new standalone explainers with no access to this repo, so phrase them as general concept questions the PR touches (for example "How do optimistic locks prevent double writes?"), never repo-specific questions.
+The explainer covers, in order:
 
-Structure the deck as three arcs. Arcs are runs of consecutive top-level slides — never wrapper items:
+1. What the PR does and why. The purpose must land before any implementation. Open with an intro slide titled "PR #<number>: <short name>" (under about 45 characters — it becomes the video card title) and one sentence on what the PR achieves.
 
-1. What and why (1-3 slides)
-- Intro slide first. Title: "PR #<number>: <short descriptive name>", under about 45 characters — it becomes the video card title. Text: one sentence on what the PR achieves.
-- Make the purpose land before any implementation: what a user, operator, or developer gets out of this change.
-- For multi-file PRs, follow with one small mermaid diagram slide mapping the changed pieces and how the changed flow moves through them. Keep it small enough to narrate node by node.
+2. How it does it. Walk the changed flow in execution order with real code on screen. Useful patterns, applied with judgment:
+- side-by-side diff slides (type="diff") when the change itself is the story; plain code slides showing the merge-commit state when the new behavior is
+- a small mermaid diagram to orient reviewers when several pieces connect
+- purpose before mechanism on every slide; name changed contracts (API shapes, schemas, config, flags, permissions, migrations) and what must now change together with them
+- mechanical bulk (renames, moved files, mass updates) gets one list slide and one sentence — spend the saved time on the load-bearing hunks
 
-2. How it works now (the bulk)
-- Walk the changed flow in execution order through real code slides.
-- Show code as it exists at the merge commit, with the correct language and filename — not raw unified diff. Raw +/- diff text gets no syntax highlighting and reads poorly on a slide. Narrate what changed, or show a compact before/after as two code slides or a two-card comparison for short fragments.
-- Syntax highlighting exists for JavaScript, TypeScript, Python, HTML, CSS, JSON, Markdown, Rust, and Imba; other languages render as plain text — still show real code with the right filename.
-- Keep every code slide to the load-bearing excerpt, at most ~20 lines. Copy code exactly; never invent, stitch, or elide lines.
-- Purpose before mechanism on every slide: name the problem the hunk solves, then how it solves it.
-- Name changed contracts explicitly: API shapes, schemas, config, flags, permissions, migrations — and what must now change together with them.
-- Mechanical or repetitive changes (renames, moved files, mass updates) share one list slide and one narrated sentence, not a slide each.
-
-3. Review verdict (2-4 slides)
-- Detected issues: only verified issues and verified architectural concerns, each labeled with severity:
-  - P0: severe correctness, safety, data loss, security, or production danger.
-  - P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
-  - P2: meaningful maintainability, test coverage, consistency, scalability, or edge-case risk.
-  - P3: small but real issue worth reviewer attention.
-- Give each P0/P1 its own slide with the offending code on screen and narration pointing at the exact lines. Group P2/P3 issues as one cards slide, one card per issue with the severity in the card title.
-- If there are no verified issues, say so plainly on one slide — a clean verdict is a useful verdict, not filler.
-- End with a "Before you merge" slide (layout="ol"): the 2-5 concrete things a reviewer should check, test locally, or ask the author, most important first.
+3. Verified issues. Only issues and architectural concerns you actually verified, each labeled with severity:
+- P0: severe correctness, safety, data loss, security, or production danger.
+- P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
+- P2: meaningful maintainability, test coverage, consistency, scalability, or edge-case risk.
+- P3: small but real issue worth reviewer attention.
+Put serious issues on their own slides with the offending code on screen and narration pointing at the exact lines. If there are no verified issues, say so plainly — a clean verdict is a useful verdict, not filler. Close with the few concrete things a reviewer should check, test locally, or ask the author before merging.
 
 ## Narration voice
 
