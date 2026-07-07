@@ -288,10 +288,21 @@ cell() {
   printf '%s' "$1" | tr '\n|' ' /'
 }
 
+status_label() {
+  case "$1" in
+    Queued) printf '⏳ Queued' ;;
+    Generating) printf '🎬 Generating' ;;
+    Done) printf '✅ Done' ;;
+    Skipped) printf '⏭️ Skipped' ;;
+    Failed) printf '❌ Failed' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 echo "<!-- scrimba-pr-explainer -->"
 echo "### Scrimba PR Explainers"
 echo
-echo "Generated for commit \`$SCRIMBA_PR_EXPLAINER_HEAD_SHA\`."
+echo "Generated for commit \`${SCRIMBA_PR_EXPLAINER_HEAD_SHA:0:7}\`."
 echo
 echo "| Agent | Status | Explainer |"
 echo "|---|---|---|"
@@ -307,16 +318,20 @@ for agent in "${AGENTS[@]}"; do
   skip_reason="$(cat "$dir/skip-reason.txt" 2>/dev/null || true)"
 
   if [ -n "$url" ]; then
-    explainer="[Open explainer]($url)"
+    explainer="[▶ Watch explainer]($url)"
   elif [ -n "$skip_reason" ]; then
     explainer="Skipped: $(cell "$skip_reason")"
   elif [ "$status" = "Failed" ]; then
-    explainer="Check workflow logs"
+    if [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+      explainer="[Check workflow logs]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+    else
+      explainer="Check workflow logs"
+    fi
   else
     explainer="Waiting for link..."
   fi
 
-  echo "| \`$(cell "$agent")\` | $(cell "$status") | $explainer |"
+  echo "| \`$(cell "$agent")\` | $(cell "$(status_label "$status")") | $explainer |"
 done
 
 echo
