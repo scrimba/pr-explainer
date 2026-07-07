@@ -302,7 +302,11 @@ status_label() {
 echo "<!-- scrimba-pr-explainer -->"
 echo "### Scrimba PR Explainers"
 echo
-echo "Generated for commit \`${SCRIMBA_PR_EXPLAINER_HEAD_SHA:0:7}\`."
+if [ -n "${SCRIMBA_PR_EXPLAINER_STARTED_AT:-}" ]; then
+  echo "Generated for commit \`${SCRIMBA_PR_EXPLAINER_HEAD_SHA:0:7}\`, kicked off at $SCRIMBA_PR_EXPLAINER_STARTED_AT."
+else
+  echo "Generated for commit \`${SCRIMBA_PR_EXPLAINER_HEAD_SHA:0:7}\`."
+fi
 echo
 echo "| Agent | Status | Explainer |"
 echo "|---|---|---|"
@@ -666,6 +670,7 @@ main() {
   export SCRIMBA_PR_EXPLAINER_AGENTS="$RESOLVED_AGENTS_CSV"
   export SCRIMBA_PR_EXPLAINER_HEAD_SHA="$HEAD_SHA"
   export SCRIMBA_PR_EXPLAINER_PR_NUMBER="$PR_NUMBER"
+  export SCRIMBA_PR_EXPLAINER_STARTED_AT="$(date -u '+%a, %d %b %Y %H:%M GMT')"
 
   for agent in "${RESOLVED_AGENTS[@]}"; do
     echo "Queued" > "$AGENTS_DIR/$agent/status.txt"
