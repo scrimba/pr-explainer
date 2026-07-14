@@ -42,6 +42,8 @@ The generated workflow runs on:
 - `pull_request`: opened, synchronize, reopened, ready for review
 - `workflow_dispatch`: manual runs
 
+Draft PRs are skipped: the workflow's job condition avoids spinning up a runner for them, and the action itself exits early if the resolved PR is still a draft. The explainer is created when a PR is opened ready for review, on pushes to a ready PR, and the moment a draft is marked ready for review.
+
 It posts one PR comment that updates as each selected agent:
 
 - starts
@@ -84,6 +86,7 @@ concurrency:
 
 jobs:
   explain:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -214,8 +217,20 @@ codex login --device-auth
 gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\n')"
 ```
 
+Codex fails with `refresh_token_reused` or `token_expired`:
+
+The stored auth secret has gone stale. Codex refresh tokens are single-use, so the secret breaks as soon as any copy of that `auth.json` refreshes — your local Codex CLI if the secret was seeded from `~/.codex/auth.json`, or a CI run after the session goes stale (roughly 8 days). Re-mint and re-set it:
+
+```bash
+codex login --device-auth
+gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\n')"
+```
+
+This is a limitation of subscription-based Codex auth on ephemeral CI runners; OpenAI's own guidance for durable CI auth is API keys or a persistent `CODEX_HOME`.
+
 No PR comment appears:
 
+- check the PR is not a draft — draft PRs are skipped by design
 - check the workflow has `issues: write`
 - check the job has `GH_TOKEN: ${{ github.token }}`
 - check the workflow is running on a PR from the same repository, or enable fork PRs explicitly

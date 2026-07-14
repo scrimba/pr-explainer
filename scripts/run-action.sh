@@ -4,7 +4,9 @@ set -euo pipefail
 WORK_DIR=".scrimba-pr-explainer"
 AGENTS_DIR="$WORK_DIR/agents"
 DEFAULT_MCP_URL="https://scrimba.com/explain/mcp"
-EXPLAINER_URL_REGEX='https://[A-Za-z0-9._:-]+/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?'
+# Pinned to the MCP host in prepare_mcp_config so PR content cannot smuggle a
+# foreign explainer URL into the comment.
+EXPLAINER_URL_REGEX=""
 
 log_status() {
   printf '[scrimba-pr-explainer] %s\n' "$1"
@@ -92,17 +94,25 @@ resolve_pr_context() {
   fi
 
   gh pr view "$PR_NUMBER" \
-    --json number,title,body,url,baseRefName,baseRefOid,headRefName,headRefOid,author,files,isCrossRepository \
+    --json number,title,body,url,baseRefName,baseRefOid,headRefName,headRefOid,author,files,isCrossRepository,isDraft \
     > "$WORK_DIR/pr.json"
 
   BASE_SHA="$(jq -r .baseRefOid "$WORK_DIR/pr.json")"
   HEAD_SHA="$(jq -r .headRefOid "$WORK_DIR/pr.json")"
   IS_CROSS_REPOSITORY="$(jq -r .isCrossRepository "$WORK_DIR/pr.json")"
+  IS_DRAFT="$(jq -r .isDraft "$WORK_DIR/pr.json")"
 
   jq -r '.files[] | "- \(.path) (+\(.additions)/-\(.deletions))"' "$WORK_DIR/pr.json" > "$WORK_DIR/diffstat.txt"
   gh pr diff "$PR_NUMBER" --patch --color never > "$WORK_DIR/pr.diff"
 
   log_status "Explaining PR #$PR_NUMBER at $HEAD_SHA"
+}
+
+enforce_draft_policy() {
+  if [ "${IS_DRAFT:-false}" = "true" ]; then
+    log_status "PR #$PR_NUMBER is a draft; skipping. An explainer is created when it is opened as or marked ready for review."
+    exit 0
+  fi
 }
 
 enforce_fork_policy() {
@@ -131,7 +141,14 @@ resolve_linked_issues() {
 prepare_mcp_config() {
   MCP_URL="${SCRIMBA_PR_EXPLAINER_MCP_URL:-$DEFAULT_MCP_URL}"
   [ -n "$MCP_URL" ] || MCP_URL="$DEFAULT_MCP_URL"
-  CODEX_HOME_DIR="${RUNNER_TEMP:-$WORK_DIR}/scrimba-pr-explainer-codex-home"
+  # Keep Codex credentials out of the checked-out workspace even when this
+  # script runs outside GitHub Actions (no RUNNER_TEMP).
+  CODEX_HOME_DIR="${RUNNER_TEMP:-$(mktemp -d)}/scrimba-pr-explainer-codex-home"
+
+  local mcp_host mcp_host_re
+  mcp_host="$(printf '%s' "$MCP_URL" | sed -E 's#^[A-Za-z]+://##; s#[/?].*$##')"
+  mcp_host_re="$(printf '%s' "$mcp_host" | sed 's/\./\\./g')"
+  EXPLAINER_URL_REGEX="https://${mcp_host_re}/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?"
 
   echo "$MCP_URL" > "$WORK_DIR/mcp-url.txt"
   log_status "Using Scrimba MCP URL: $MCP_URL"
@@ -212,6 +229,7 @@ The start tool returns the full OPML authoring contract — follow it for all ma
 - Let the PR decide the explainer's length and shape. Use however many slides the review actually needs — no minimum section count, no padding toward lesson length.
 - Quiz: optional, not required. Include one only when the PR has a genuinely instructive gotcha a reviewer might miss, and ask about this PR's actual behavior.
 - Animations: only when motion itself explains the change. Skip otherwise.
+- Images: never. Do not emit type="image" items — a PR review teaches from real code, diffs, and diagrams; generated imagery adds cost and noise without sharpening the review.
 - Followups: still emit exactly two, but they generate new standalone explainers with no access to this repo — phrase them as general concept questions the PR touches, never repo-specific ones.
 
 Immediately after start_explainer_stream returns, before pushing any content, write the claim URL (the one containing ?claim=) to this file:
@@ -317,9 +335,9 @@ IFS=',' read -r -a AGENTS <<< "$SCRIMBA_PR_EXPLAINER_AGENTS"
 for agent in "${AGENTS[@]}"; do
   dir=".scrimba-pr-explainer/agents/$agent"
   status="$(cat "$dir/status.txt" 2>/dev/null || echo "Queued")"
-  url="$(grep -Eom 1 'https://[A-Za-z0-9._:-]+/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?' "$dir/url.txt" 2>/dev/null || true)"
+  url="$(grep -Eom 1 "$SCRIMBA_PR_EXPLAINER_URL_REGEX" "$dir/url.txt" 2>/dev/null || true)"
   if [ -z "$url" ] && [ -s "$dir/live-guide-url.txt" ]; then
-    url="$(grep -Eom 1 'https://[A-Za-z0-9._:-]+/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?' "$dir/live-guide-url.txt" 2>/dev/null || true)"
+    url="$(grep -Eom 1 "$SCRIMBA_PR_EXPLAINER_URL_REGEX" "$dir/live-guide-url.txt" 2>/dev/null || true)"
   fi
   skip_reason="$(cat "$dir/skip-reason.txt" 2>/dev/null || true)"
 
@@ -371,6 +389,7 @@ SCRIPT
 render_and_post_comment() {
   SCRIMBA_PR_EXPLAINER_AGENTS="$RESOLVED_AGENTS_CSV" \
   SCRIMBA_PR_EXPLAINER_HEAD_SHA="$HEAD_SHA" \
+  SCRIMBA_PR_EXPLAINER_URL_REGEX="$EXPLAINER_URL_REGEX" \
     "$WORK_DIR/render-comment.sh" > "$WORK_DIR/comment.md"
 
   SCRIMBA_PR_EXPLAINER_PR_NUMBER="$PR_NUMBER" \
@@ -631,6 +650,9 @@ run_agent() {
 
   if [ "$status" != "0" ]; then
     echo "Failed" > "$dir/status.txt"
+    if [ "$agent" = "codex" ] && grep -q "refresh_token_reused" "$dir/agent-stderr.txt" 2>/dev/null; then
+      echo "::error::The Codex auth secret is stale: its refresh token was already used. Codex refresh tokens are single-use, so any refresh by another copy of this auth.json (your local Codex CLI, or an earlier CI run) invalidates the stored secret. Re-run 'codex login --device-auth' and update SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64."
+    fi
   elif [ -s "$dir/skip-reason.txt" ]; then
     echo "Skipped" > "$dir/status.txt"
   elif [ -s "$dir/url.txt" ]; then
@@ -661,6 +683,7 @@ main() {
   mkdir -p "$WORK_DIR"
   resolve_agents
   resolve_pr_context
+  enforce_draft_policy
   enforce_fork_policy
   resolve_linked_issues
   prepare_mcp_config

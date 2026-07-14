@@ -134,6 +134,7 @@ concurrency:
 
 jobs:
   explain:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
