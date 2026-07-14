@@ -1,9 +1,14 @@
 {
-  "name": "@scrimba/pr-explainer",
+  "name": "pr-explainer",
   "version": "0.1.0",
   "private": false,
   "type": "module",
   "description": "Create Scrimba PR explainers from GitHub Actions using Claude Code, Codex, or both.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scrimba/pr-explainer.git"
+  },
+  "homepage": "https://github.com/scrimba/pr-explainer",
   "bin": {
     "pr-explainer": "./bin/pr-explainer.js"
   },

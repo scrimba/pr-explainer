@@ -450,7 +450,7 @@ It can also set up the required GitHub secrets.`);
 async function main() {
   const [command] = process.argv.slice(2);
   if (!command || command === "help" || command === "--help" || command === "-h") {
-    console.log("Usage: npx @scrimba/pr-explainer init");
+    console.log("Usage: npx pr-explainer init");
     return;
   }
   if (command !== "init") {

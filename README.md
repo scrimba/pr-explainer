@@ -10,8 +10,10 @@ Example video: https://scrimba.com/explain/guide0t4l29d7l
 
 ```bash
 cd your-repo
-npx @scrimba/pr-explainer init
+npx pr-explainer init
 ```
+
+`npx scrimba/pr-explainer init` works too — npx resolves it as the GitHub repo, so it runs the same installer from the default branch.
 
 The init command:
 
@@ -256,13 +258,13 @@ Publish the npm init command:
 
 ```bash
 npm login
-npm publish --access public
+npm publish
 ```
 
 After publishing, verify the public installer:
 
 ```bash
-npx @scrimba/pr-explainer init
+npx pr-explainer init
 ```
 
 Publish the GitHub Action ref documented in this README:
