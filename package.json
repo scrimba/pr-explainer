@@ -10,7 +10,7 @@
   },
   "homepage": "https://github.com/scrimba/pr-explainer",
   "bin": {
-    "pr-explainer": "./bin/pr-explainer.js"
+    "pr-explainer": "bin/pr-explainer.js"
   },
   "files": [
     "action.yml",
