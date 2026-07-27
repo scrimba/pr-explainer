@@ -213,6 +213,7 @@ SCRIMBA_PR_EXPLAINER_SKIP_REASON=<one short sentence>
 
 Do the review work first, then author the explainer from verified findings:
 - Reconstruct intent from the PR title, body, commit messages, and linked issues.
+- Explain the snapshot, not the journey: the explainer covers the PR's net change as it stands right now. Commit messages and branch history are investigation input only — never narrate the development commit by commit, and never mention iterations, reverts, or fixups along the way.
 - Trace the real execution flow the PR changes, end to end: entry points, handoffs, side effects, results.
 - Rank the hunks: almost every PR has one or two load-bearing changes and many mechanical ones. Budget slides by review risk, not by diff size.
 - Check the test story: which changed behaviors are covered, which are not. Only mention missing tests when a specific test would catch a specific plausible regression. Never give vague "add tests" feedback.
