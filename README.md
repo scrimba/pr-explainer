@@ -1,8 +1,8 @@
 # Scrimba PR Video Explainer
 
-Create Scrimba explainer videos for GitHub pull requests with Claude Code, Codex, or both.
+Create Scrimba explainer videos for GitHub pull requests with Claude Code.
 
-The action checks out the PR, lets the selected agent inspect the code and diff, creates a Scrimba video explainer through the Scrimba MCP server, and keeps one PR comment updated with the latest explainer links.
+The action checks out the PR, lets Claude Code inspect the code and diff, creates a Scrimba video explainer through the Scrimba MCP server, and keeps one PR comment updated with the latest explainer link.
 
 Example video: https://scrimba.com/explain/guide0t4l29d7l
 
@@ -10,18 +10,16 @@ Example video: https://scrimba.com/explain/guide0t4l29d7l
 
 ```bash
 cd your-repo
-npx pr-explainer init
+npx pr-explainer
 ```
 
-`npx scrimba/pr-explainer init` works too — npx resolves it as the GitHub repo, so it runs the same installer from the default branch.
+`npx scrimba/pr-explainer` works too — npx resolves it as the GitHub repo, so it runs the same installer from the default branch.
 
-The init command:
+The installer:
 
 - verifies it is running inside a git repository
-- detects Claude Code and Codex locally
-- asks whether to use Claude, Codex, or both
 - writes `.github/workflows/scrimba-pr-explainer.yml`
-- optionally sets the required GitHub secrets when `gh` is available and authenticated
+- optionally sets the required GitHub secret, minting a token via `claude setup-token` when the Claude Code CLI is available
 - prints the manual setup commands when automatic GitHub setup is unavailable or skipped
 - does not commit anything
 
@@ -29,11 +27,9 @@ The init command:
 
 - A git repository hosted on GitHub with Actions enabled
 - `git`
-- Node.js 20 or newer for the init command
-- At least one supported agent:
-  - Claude Code with a Claude Code OAuth token
-  - Codex with `~/.codex/auth.json`
-- Optional: GitHub CLI installed and authenticated with `gh auth login` if you want the installer to set repo secrets for you
+- Node.js 20 or newer for the installer
+- Claude Code with a Claude Code OAuth token
+- Optional: GitHub CLI installed and authenticated with `gh auth login` if you want the installer to set the repo secret for you
 
 This action is designed for subscription-based CLI auth. You do not need LLM API keys.
 
@@ -46,7 +42,9 @@ The generated workflow runs on:
 
 Draft PRs are skipped: the workflow's job condition avoids spinning up a runner for them, and the action itself exits early if the resolved PR is still a draft. The explainer is created when a PR is opened ready for review, on pushes to a ready PR, and the moment a draft is marked ready for review.
 
-It posts one PR comment that updates as each selected agent:
+The explainer is a helper, not a merge gate: the generated workflow runs the action with `continue-on-error: true`, so a failed explainer never blocks merging — the PR comment reports the failure and the check still passes.
+
+It posts one PR comment that updates as the agent:
 
 - starts
 - writes a live Scrimba explainer URL
@@ -54,11 +52,9 @@ It posts one PR comment that updates as each selected agent:
 - finishes
 - fails
 
-Multiple agents run in parallel, each producing its own video explainer link.
-
 ## Workflow Example
 
-The init command writes this shape of workflow:
+The installer writes this shape of workflow:
 
 ```yaml
 name: Scrimba PR Explainer
@@ -70,10 +66,6 @@ on:
     inputs:
       pr_number:
         description: PR number to explain when running manually
-        required: false
-        type: string
-      agents:
-        description: Override agents for this run, e.g. claude,codex
         required: false
         type: string
 
@@ -92,29 +84,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: scrimba/pr-explainer@<ref>
+      # The explainer is a helper, not a merge gate. When the agent can't
+      # build one, the PR comment says so and this check still passes.
+      - name: Create Scrimba PR explainer
+        continue-on-error: true
+        uses: scrimba/pr-explainer@<ref>
         with:
-          agents: ${{ inputs.agents || 'claude,codex' }}
-          pr-number: ${{ inputs.pr_number || '' }}
+          # allow-forks stays false because fork PRs can contain prompt
+          # injection: the agent that builds the explainer reads PR content
+          # with access to the checked-out repository and any secrets passed
+          # to this job. Only set it to true if you trust every fork PR that
+          # can reach this workflow.
           allow-forks: false
+          pr-number: ${{ inputs.pr_number || '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
-          SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64: ${{ secrets.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 }}
 ```
 
 The action handles checkout, Node setup, PR metadata, prompt logging, agent execution, and PR comments. The generated workflow owns everything contextual: triggers, token permissions, concurrency, workflow-dispatch inputs, action inputs, and secrets.
 
 Replace `<ref>` with the action ref you want to run, such as `main` while testing unreleased changes or a versioned ref after release.
-
-## Agent Setup
-
-Set one or more agents in the workflow:
-
-```yaml
-with:
-  agents: claude,codex
-```
 
 ## Claude Auth
 
@@ -130,23 +120,13 @@ Then store it as a GitHub Actions secret:
 gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN
 ```
 
-If GitHub CLI is available, the init command can run `claude setup-token` for you, accept a pasted token, and save the token as the GitHub secret. If GitHub CLI is unavailable or you skip automatic setup, it prints the manual commands.
+The installer does both of these for you when the Claude Code CLI and an authenticated GitHub CLI are available. If either is unavailable or you skip automatic setup, it prints the manual commands.
 
-## Codex Auth
+## Codex
 
-Sign in with Codex:
+Codex support has been removed for now. Subscription-based Codex auth cannot survive ephemeral CI runners: Codex refresh tokens are single-use, so a static copy of `~/.codex/auth.json` stored as a secret breaks as soon as any copy of it refreshes — your local Codex CLI, or a CI run after the session goes stale (roughly 8 days). OpenAI's own guidance for durable CI auth is API keys or a persistent `CODEX_HOME`.
 
-```bash
-codex login --device-auth
-```
-
-Then store the Codex auth file as a GitHub Actions secret:
-
-```bash
-gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\n')"
-```
-
-If GitHub CLI is available, the init command can use the detected `~/.codex/auth.json`, or let you log in with Codex again and use the new auth file. It then saves the selected auth file as the GitHub secret. If GitHub CLI is unavailable or you skip automatic setup, it prints the manual commands.
+See https://github.com/scrimba/pr-explainer/issues/2 for the details and the plan to bring it back properly.
 
 ## Action Inputs
 
@@ -154,18 +134,15 @@ These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
 
 | Input | Default | Description |
 |---|---:|---|
-| `agents` | `""` | Comma-separated agents to run, such as `claude,codex`. |
+| `agents` | `""` | Agents to run. Only `claude` is currently supported; empty defaults to `claude`. |
 | `pr-number` | `""` | PR number to explain. Empty resolves the PR from the triggering event. |
-| `allow-forks` | `"false"` | Set to `true` to allow explainers on fork PRs. |
-
-If `agents` is empty, the action chooses an agent from the available secrets, preferring Claude when both are absent.
+| `allow-forks` | `"false"` | Set to `true` to allow PR explainers on fork PRs. |
 
 ## Secrets
 
-| Secret | Required when | Description |
+| Secret | Required | Description |
 |---|---|---|
-| `SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN` | Using Claude | Token from `claude setup-token`. |
-| `SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64` | Using Codex | Base64 encoded `~/.codex/auth.json`. |
+| `SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN` | Yes | Token from `claude setup-token`. |
 
 ## Fork PRs
 
@@ -178,7 +155,7 @@ with:
   allow-forks: true
 ```
 
-Only enable this for repositories where you trust fork PRs not to execute prompt injections. These explainers are created by your selected agent using PR content, and that agent has access to the checked-out repository and any secrets passed to the job.
+Only enable this for repositories where you trust fork PRs not to execute prompt injections. These explainers are created by an agent using PR content, and that agent has access to the checked-out repository and any secrets passed to the job. The generated workflow carries this warning as a comment right above the `allow-forks` line, so it is in front of anyone about to flip it.
 
 ## Manual Runs
 
@@ -189,7 +166,6 @@ Use it when you want to regenerate an explainer without pushing a new commit:
 - choose the `Scrimba PR Explainer` workflow in GitHub Actions
 - click `Run workflow`
 - enter a PR number
-- optionally override `agents`
 
 ## Troubleshooting
 
@@ -205,30 +181,6 @@ Run:
 claude setup-token
 gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN
 ```
-
-Missing Codex secret:
-
-```text
-Missing SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 secret for Codex.
-```
-
-Run:
-
-```bash
-codex login --device-auth
-gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\n')"
-```
-
-Codex fails with `refresh_token_reused` or `token_expired`:
-
-The stored auth secret has gone stale. Codex refresh tokens are single-use, so the secret breaks as soon as any copy of that `auth.json` refreshes — your local Codex CLI if the secret was seeded from `~/.codex/auth.json`, or a CI run after the session goes stale (roughly 8 days). Re-mint and re-set it:
-
-```bash
-codex login --device-auth
-gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\n')"
-```
-
-This is a limitation of subscription-based Codex auth on ephemeral CI runners; OpenAI's own guidance for durable CI auth is API keys or a persistent `CODEX_HOME`.
 
 No PR comment appears:
 
@@ -249,12 +201,12 @@ npm pack --dry-run
 Test unreleased changes from GitHub:
 
 ```bash
-npx github:scrimba/pr-explainer init
+npx github:scrimba/pr-explainer
 ```
 
 During development, the installer may generate workflows that use `scrimba/pr-explainer@main`. For a stable release, use a versioned action ref such as `scrimba/pr-explainer@v1`.
 
-Publish the npm init command:
+Publish the npm installer:
 
 ```bash
 npm login
@@ -264,7 +216,7 @@ npm publish
 After publishing, verify the public installer:
 
 ```bash
-npx pr-explainer init
+npx pr-explainer
 ```
 
 Publish the GitHub Action ref documented in this README:

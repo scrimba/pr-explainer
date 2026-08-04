@@ -1,9 +1,9 @@
 name: Scrimba PR Explainer
-description: Create Scrimba explainers for pull requests with Claude Code, Codex, or both.
+description: Create Scrimba explainers for pull requests with Claude Code.
 
 inputs:
   agents:
-    description: Comma-separated agents to run, e.g. claude,codex. Empty picks an agent from the credentials provided via env.
+    description: Comma-separated agents to run. Only claude is currently supported; empty defaults to claude.
     required: false
     default: ""
   pr-number:

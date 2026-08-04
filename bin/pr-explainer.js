@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import {
   cancel,
@@ -9,17 +8,14 @@ import {
   intro,
   isCancel,
   log,
-  multiselect,
   note,
   outro,
   password,
-  select,
   spinner,
 } from "@clack/prompts";
 
 const WORKFLOW_PATH = ".github/workflows/scrimba-pr-explainer.yml";
 const ACTION_REF = "scrimba/pr-explainer@main";
-const CODEX_AUTH_PATH = join(homedir(), ".codex", "auth.json");
 
 function exitOnInterrupt() {
   cancel("Installation cancelled.");
@@ -105,8 +101,7 @@ function unwrapPrompt(value) {
   return value;
 }
 
-function workflowYaml(agents, allowForks) {
-  const agentsValue = agents.join(",");
+function workflowYaml() {
   return `name: Scrimba PR Explainer
 
 on:
@@ -116,10 +111,6 @@ on:
     inputs:
       pr_number:
         description: PR number to explain when running manually
-        required: false
-        type: string
-      agents:
-        description: Override agents for this run, e.g. claude,codex
         required: false
         type: string
 
@@ -138,49 +129,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # The explainer is a helper, not a merge gate. When the agent can't
+      # build one, the PR comment says so and this check still passes.
       - name: Create Scrimba PR explainer
+        continue-on-error: true
         uses: ${ACTION_REF}
         with:
-          agents: \${{ inputs.agents || '${agentsValue}' }}
+          # allow-forks stays false because fork PRs can contain prompt
+          # injection: the agent that builds the explainer reads PR content
+          # with access to the checked-out repository and any secrets passed
+          # to this job. Only set it to true if you trust every fork PR that
+          # can reach this workflow.
+          allow-forks: false
           pr-number: \${{ inputs.pr_number || '' }}
-          allow-forks: ${allowForks}
         env:
           GH_TOKEN: \${{ github.token }}
           SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN: \${{ secrets.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN }}
-          SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64: \${{ secrets.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 }}
 `;
-}
-
-function base64File(path) {
-  return readFileSync(path).toString("base64");
 }
 
 function setSecret(name, value) {
   run("gh", ["secret", "set", name], { input: value });
 }
 
-function logManualGitHubCommands(agents) {
-  let body = "";
-  if (agents.includes("claude")) {
-    body += `Claude:
-
- * Get token:
+function logManualGitHubCommands() {
+  note(`Get a token:
   \`claude setup-token\`
 
- * Set token:
-  \`gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN\``;
-  }
-  if (agents.includes("codex")) {
-    if (body) body += "\n\n";
-    body += `Codex:
-
- * Log in with:
-  \`codex login --device-auth\`
-
- * Set token via:
-  \`gh secret set SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 --body "$(base64 < ~/.codex/auth.json | tr -d '\\n')"\``;
-  }
-  note(body, "GitHub settings");
+Set it as the GitHub secret:
+  \`gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN\``, "GitHub settings");
 }
 
 function requireGitRepo() {
@@ -211,43 +188,15 @@ function detectGitHub() {
   }
 }
 
-function detectedAgents() {
-  const claudeCli = commandExists("claude");
-  const codexCli = commandExists("codex");
-  const codexAuth = existsSync(CODEX_AUTH_PATH);
-  const claudeToken = Boolean(process.env.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN);
-  return { claudeCli, codexCli, codexAuth, claudeToken };
-}
-
-function suggestedAgents(detected) {
-  if (detected.claudeCli || detected.claudeToken) return "claude";
-  if (detected.codexCli || detected.codexAuth) return "codex";
-  return "claude";
-}
-
-async function collectClaudeAuth(detected) {
+async function collectClaudeAuth() {
   const envToken = process.env.SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN || "";
   if (envToken) {
     return { token: envToken, source: "environment" };
   }
 
-  let mode = "provide";
-  if (detected.claudeCli) {
-    mode = unwrapPrompt(await select({
-      message: "Claude needs an OAuth token in GitHub Actions. How should we get it?",
-      initialValue: "setup",
-      options: [
-        { value: "setup", label: "Get token via Claude Code" },
-        { value: "provide", label: "I will provide a token" },
-      ],
-    }));
-  } else {
-    log.warn("Claude Code CLI was not found. Paste a token you already have, or rerun this after installing Claude Code.");
-  }
-
-  if (mode === "setup") {
+  if (commandExists("claude")) {
     const s = spinner();
-    s.start("Getting Claude token");
+    s.start("Getting a Claude token via `claude setup-token`");
     const token = await runClaudeSetupToken();
     if (token) {
       s.stop("Claude token created");
@@ -255,6 +204,8 @@ async function collectClaudeAuth(detected) {
     }
     s.error("Could not read a token from Claude Code");
     log.warn("Run `claude setup-token` yourself, then paste the token below.");
+  } else {
+    log.warn("Claude Code CLI was not found. Paste a token you already have, or rerun this after installing Claude Code.");
   }
 
   const token = unwrapPrompt(await password({
@@ -265,110 +216,47 @@ async function collectClaudeAuth(detected) {
     return { token, source: "prompt" };
   }
 
-  log.warn("Claude selected without a token. The workflow will still be written, but Claude runs need the secret before they can work.");
+  log.warn("No token provided. The workflow will still be written, but runs need the secret before they can work.");
   return { token: "", source: "manual" };
 }
 
-async function collectCodexAuth() {
-  const envAuth = process.env.SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 || process.env.CODEX_AUTH_JSON_B64 || "";
-  if (envAuth) {
-    return envAuth;
-  }
-
-  if (existsSync(CODEX_AUTH_PATH)) {
-    const mode = unwrapPrompt(await select({
-      message: "Found Codex authentication at ~/.codex/auth.json. What should we use for GitHub Actions?",
-      initialValue: "detected",
-      options: [
-        { value: "detected", label: "Use the detected Codex auth file" },
-        { value: "login", label: "Log in with Codex now" },
-      ],
-    }));
-
-    if (mode === "detected") {
-      return base64File(CODEX_AUTH_PATH);
-    }
-  } else if (!commandExists("codex")) {
-    throw new Error("Codex was selected, but the codex CLI is not installed and ~/.codex/auth.json was not found.");
-  } else {
-    log.warn("Codex auth was not found at ~/.codex/auth.json.");
-  }
-
-  run("codex", ["login", "--device-auth"], { stdio: "inherit" });
-
-  if (!existsSync(CODEX_AUTH_PATH)) {
-    throw new Error("Codex auth.json still was not found. Run `codex login --device-auth`, then rerun init.");
-  }
-
-  return base64File(CODEX_AUTH_PATH);
-}
-
-async function collectAuth(agents, detected) {
-  const auth = {};
-  if (agents.includes("claude")) {
-    auth.claude = await collectClaudeAuth(detected);
-  }
-  if (agents.includes("codex")) {
-    auth.codexAuthB64 = await collectCodexAuth();
-  }
-  return auth;
-}
-
-async function configureGitHub(github, agents, detected) {
+async function configureGitHub(github) {
   if (!github.available) {
     log.warn(`${github.reason} Skipping automatic GitHub setup.`);
-    logManualGitHubCommands(agents);
+    logManualGitHubCommands();
     return;
   }
 
   const shouldSet = unwrapPrompt(await confirm({
-    message: `Set GitHub secrets on ${github.repo} now?`,
+    message: `Set the Claude token secret on ${github.repo} now?`,
     initialValue: true,
   }));
   if (!shouldSet) {
     log.warn("Skipped GitHub settings.");
-    logManualGitHubCommands(agents);
+    logManualGitHubCommands();
     return;
   }
 
-  const auth = await collectAuth(agents, detected);
-  let configured = "";
-  const s = spinner();
-  try {
-    s.start("Setting GitHub repository settings");
-    if (agents.includes("claude") && auth.claude?.token) {
-      setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.claude.token);
-      configured += "secret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN";
-    }
-    if (agents.includes("codex")) {
-      setSecret("SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64", auth.codexAuthB64);
-      if (configured) configured += "\n";
-      configured += "secret SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64";
-    }
-    s.clear();
-    if (configured) {
-      log.success(`GitHub repository ${github.repo} updated:\n${configured}`);
-    }
-  } catch (error) {
-    s.error("Failed to set GitHub repository settings");
-    throw error;
-  }
-
-  if (agents.includes("claude") && !auth.claude?.token) {
+  const auth = await collectClaudeAuth();
+  if (!auth.token) {
     log.warn("Claude token was not provided, so SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN was not set.");
     log.info("Run this when you have a token:\n  gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN");
+    return;
+  }
+
+  const s = spinner();
+  try {
+    s.start("Setting the GitHub repository secret");
+    setSecret("SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN", auth.token);
+    s.clear();
+    log.success(`GitHub repository ${github.repo} updated:\nsecret SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN`);
+  } catch (error) {
+    s.error("Failed to set the GitHub repository secret");
+    throw error;
   }
 }
 
-async function askAllowForks() {
-  note("Fork PRs can contain prompt injection. These explainers are created by your selected agent, using PR content, with access to the checked-out repository. Only enable this if you trust the PRs that will run this workflow.", "Fork PR Safety");
-  return unwrapPrompt(await confirm({
-    message: "Allow PR explainers to run on fork PRs?",
-    initialValue: false,
-  }));
-}
-
-async function writeWorkflow(agents, allowForks) {
+async function writeWorkflow() {
   if (existsSync(WORKFLOW_PATH)) {
     const overwrite = unwrapPrompt(await confirm({
       message: `${WORKFLOW_PATH} already exists. Overwrite?`,
@@ -381,7 +269,7 @@ async function writeWorkflow(agents, allowForks) {
   }
 
   mkdirSync(dirname(WORKFLOW_PATH), { recursive: true });
-  writeFileSync(WORKFLOW_PATH, workflowYaml(agents, allowForks));
+  writeFileSync(WORKFLOW_PATH, workflowYaml());
   log.success(`Wrote ${WORKFLOW_PATH}`);
   return true;
 }
@@ -395,53 +283,13 @@ async function init() {
   requireGitRepo();
 
   const github = detectGitHub();
-  const detected = detectedAgents();
 
-  note(`This installer adds a GitHub Action that creates Scrimba PR explainer videos.
+  note(`This installer adds a GitHub Action that creates a Scrimba explainer video for each pull request, using Claude Code.
 
-It can also set up the required GitHub secrets.`);
+It can also set up the required GitHub secret.`);
 
-  let n = []
-
-  if (detected.claudeCli || detected.claudeToken) {
-    n.push("  Claude Code.");
-  }
-  if (detected.codexCli || detected.codexAuth) {
-    n.push("  Codex.");
-  }
-
-  if (n.length) {
-    n.unshift("Detected supported agents locally:");
-  }
-
-  if (n.length) {
-    log.info(n.join("\n"));
-  }
-
-  if (!n.length) {
-    log.warn("No supported agents detected locally.");
-  }
-
-  const suggested = suggestedAgents(detected);
-  const agents = unwrapPrompt(await multiselect({
-    message: "Which agent(s) do you want to use?",
-    required: true,
-    initialValues: [suggested],
-    options: [
-      {
-        value: "claude",
-        label: "Claude Code",
-      },
-      {
-        value: "codex",
-        label: "Codex",
-      },
-    ],
-  }));
-
-  const allowForks = await askAllowForks();
-  await writeWorkflow(agents, allowForks);
-  await configureGitHub(github, agents, detected);
+  await writeWorkflow();
+  await configureGitHub(github);
 
   log.info(`Next:\n  git add ${WORKFLOW_PATH}\n  git commit -m "Add Scrimba PR Explainer"\n  git push`);
   outro("Done. No files were committed.");
@@ -449,11 +297,11 @@ It can also set up the required GitHub secrets.`);
 
 async function main() {
   const [command] = process.argv.slice(2);
-  if (!command || command === "help" || command === "--help" || command === "-h") {
-    console.log("Usage: npx pr-explainer init");
+  if (command === "help" || command === "--help" || command === "-h") {
+    console.log("Usage: npx pr-explainer [init]");
     return;
   }
-  if (command !== "init") {
+  if (command && command !== "init") {
     throw new Error(`Unknown command "${command}". Expected: init`);
   }
   await init();
