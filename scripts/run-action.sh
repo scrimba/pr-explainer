@@ -24,13 +24,7 @@ resolve_agents() {
   raw_agents="${SCRIMBA_PR_EXPLAINER_AGENTS:-}"
 
   if [ -z "$raw_agents" ]; then
-    if [ -n "${SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-      raw_agents="claude"
-    elif [ -n "${SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64:-}" ]; then
-      raw_agents="codex"
-    else
-      raw_agents="claude"
-    fi
+    raw_agents="claude"
   fi
 
   local normalized
@@ -44,7 +38,11 @@ resolve_agents() {
     [ -n "$agent" ] || continue
 
     case "$agent" in
-      claude|codex) ;;
+      claude) ;;
+      codex)
+        echo "::error::Codex support has been removed for now: subscription-based Codex auth cannot survive ephemeral CI runners. See https://github.com/scrimba/pr-explainer/issues/2."
+        exit 1
+        ;;
       *)
         echo "::error::Unsupported Scrimba PR explainer agent: $agent"
         exit 1
@@ -69,10 +67,6 @@ resolve_agents() {
   for agent in "${RESOLVED_AGENTS[@]}"; do
     if [ "$agent" = "claude" ] && [ -z "${SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
       echo "::error::Missing SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN secret for Claude."
-      exit 1
-    fi
-    if [ "$agent" = "codex" ] && [ -z "${SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64:-}" ]; then
-      echo "::error::Missing SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64 secret for Codex."
       exit 1
     fi
   done
@@ -141,9 +135,6 @@ resolve_linked_issues() {
 prepare_mcp_config() {
   MCP_URL="${SCRIMBA_PR_EXPLAINER_MCP_URL:-$DEFAULT_MCP_URL}"
   [ -n "$MCP_URL" ] || MCP_URL="$DEFAULT_MCP_URL"
-  # Keep Codex credentials out of the checked-out workspace even when this
-  # script runs outside GitHub Actions (no RUNNER_TEMP).
-  CODEX_HOME_DIR="${RUNNER_TEMP:-$(mktemp -d)}/scrimba-pr-explainer-codex-home"
 
   local mcp_host mcp_host_re
   mcp_host="$(printf '%s' "$MCP_URL" | sed -E 's#^[A-Za-z]+://##; s#[/?].*$##')"
@@ -162,26 +153,6 @@ prepare_mcp_config() {
     }
   }
 }
-EOF
-
-  mkdir -p "$CODEX_HOME_DIR"
-  cat > "$CODEX_HOME_DIR/config.toml" <<EOF
-cli_auth_credentials_store = "file"
-approval_policy = "never"
-sandbox_mode = "danger-full-access"
-
-[mcp_servers.scrimba]
-command = "npx"
-args = ["-y", "mcp-remote@0.1.38", "$MCP_URL"]
-required = true
-startup_timeout_sec = 120
-enabled_tools = [
-  "start_explainer_stream",
-  "append_explainer_chunk",
-  "finish_explainer_stream"
-]
-default_tools_approval_mode = "approve"
-tool_timeout_sec = 300
 EOF
 }
 
@@ -213,17 +184,20 @@ SCRIMBA_PR_EXPLAINER_SKIP_REASON=<one short sentence>
 
 Do the review work first, then author the explainer from verified findings:
 - Reconstruct intent from the PR title, body, commit messages, and linked issues.
-- Trace the real execution flow the PR changes, end to end: entry points, handoffs, side effects, results.
+- Check whether the repo documents the changed area — READMEs, design docs, contributing guides, comments near the changed code. If it does, read that first: it defines what the change must fit, and a change that follows the documented design is not a concern just because you would have designed it differently.
+- Trace the real execution flow the PR changes, end to end: entry points, handoffs, side effects, results. Trace flows that actually run, not hypothetical flows that cannot happen.
+- Judge the change against the whole codebase, not just the diff. A change can be locally correct and still wrong: it duplicates a function or path that already exists, builds a parallel implementation beside the capability's real owner, puts code where it does not belong, or ignores the conventions the surrounding code follows. Search for existing usage and owners before concluding the change fits.
+- Watch for hacks, bandaids, and patch work: a delay that does not fix the underlying race, a guard that avoids an undiagnosed failure, a retry papering over a bug, a protective if that hides a broken invariant. When you see one, the underlying model or foundation is usually what is wrong — find the root cause it papers over and treat that as the real concern.
 - Rank the hunks: almost every PR has one or two load-bearing changes and many mechanical ones. Budget slides by review risk, not by diff size.
-- Check the test story: which changed behaviors are covered, which are not. Only mention missing tests when a specific test would catch a specific plausible regression. Never give vague "add tests" feedback.
-- Try to disprove every concern before presenting it: search for existing usage, guards, and handling paths. If the code already handles it, omit it.
-- Trace real execution flows, not hypothetical flows that cannot happen. Run targeted read-only checks when they settle a question quickly.
+- Check the test story: which changed behaviors are covered, which are not. Read the tests that claim to cover the change and infer whether each would actually fail if the change were broken or reverted — a test that cannot fail for this change does not cover it, and that is worth saying. Only mention missing tests when a specific test would catch a specific plausible regression. Never give vague "add tests" feedback.
+- Verify every concern before presenting it: search for existing usage, guards, and handling paths — if the code already handles it, omit it. A concern is demonstrated only when you can name the concrete input, state, or sequence that produces the wrong result. "This could happen" is not demonstrated. If you cannot produce one, drop the concern entirely — do not keep it at a lower severity.
+- Run targeted read-only checks when they settle a question quickly.
 
 Do not modify repository files, stage changes, commit, reset, clean, format, update snapshots, or mutate project state. If creating an explainer, the only local file you may write is {{LIVE_GUIDE_URL_FILE}}.
 
 ## Create the explainer
 
-Use the Scrimba MCP tools: start_explainer_stream, then append_explainer_chunk repeatedly, then finish_explainer_stream. Call start_explainer_stream with visibility="unlisted" so the explainer stays viewable by anyone with the link after a team member claims it.
+Use the Scrimba MCP tools: start_explainer_stream, then append_explainer_chunk repeatedly, then finish_explainer_stream. Create exactly one explainer per run: one start_explainer_stream call, its chunks, and one finish_explainer_stream call. Never start a second stream — if a chunk fails, retry that chunk on the same stream. Call start_explainer_stream with visibility="unlisted" so the explainer stays viewable by anyone with the link after a team member claims it.
 
 The start tool returns the full OPML authoring contract — follow it for all markup mechanics: slides, anchors, says, code refs, diff items, diagrams, layouts, CDATA, markup safety. The contract is written for lessons, though. You are making a PR review, and on matters of content this brief overrides it:
 - Let the PR decide the explainer's length and shape. Use however many slides the review actually needs — no minimum section count, no padding toward lesson length.
@@ -246,11 +220,16 @@ The explainer covers, in order:
 - purpose before mechanism on every slide; name changed contracts (API shapes, schemas, config, flags, permissions, migrations), what must now change together with them, and why the new owner is the natural home when responsibility moves
 - mechanical bulk (renames, moved files, mass updates) gets one list slide and one sentence — spend the saved time on the load-bearing hunks
 
-3. Verified issues. Only issues and architectural concerns you actually verified, each labeled with severity:
-- P0: severe correctness, safety, data loss, security, or production danger.
-- P1: likely user-visible regression, broken flow, security problem, or serious operational risk.
-- P2: meaningful maintainability, test coverage, consistency, scalability, or edge-case risk.
-- P3: small but real issue worth reviewer attention.
+3. Verified issues. Two kinds, both held to the evidence bar above — never mix them:
+
+Runtime findings — verified defects that can misbehave at runtime, each labeled with severity:
+- P0: breaks users now — severe correctness, data loss, security, or production danger.
+- P1: breaks users under a condition that will occur — a likely regression, broken flow, security problem, or serious operational risk.
+- P2: a real defect with a limited blast radius.
+- P3: correct today, but will mislead or trip the next person to touch it.
+
+Holistic concerns — the change is locally correct but wrong for the system: it duplicates code that already exists, builds a parallel implementation beside the real owner, patches a symptom whose root cause should be fixed instead, or breaks the repo's conventions. A holistic concern must name both sides: what the change did, and the existing code, owner, or documented design it ignored. If you cannot point at the ignored side, it is not a concern — an observation about the design is not one either.
+
 Narrate each issue as a short story of what goes wrong for whom — "a viewer presses play and hears nothing, because..." — never as a terse review nit. Put serious issues on their own slides with the offending code on screen and narration pointing at the exact lines. If there are no verified issues, say so plainly — a clean verdict is a useful verdict, not filler. Close with the few concrete things a reviewer should check, test locally, or ask the author before merging.
 
 ## Narration voice
@@ -404,11 +383,6 @@ install_agent_clis() {
           npm install -g @anthropic-ai/claude-code@latest
         fi
         ;;
-      codex)
-        if ! command -v codex >/dev/null 2>&1; then
-          npm install -g @openai/codex@latest
-        fi
-        ;;
     esac
   done
 }
@@ -469,49 +443,6 @@ else
   empty
 end
 JQ
-
-  cat > "$WORK_DIR/format-codex-stream.jq" <<'JQ'
-def lines($prefix; $s):
-  ($s // "" | tostring | gsub("\r"; "") | split("\n") | map(select(length > 0)) | .[:40][] | $prefix + .);
-
-def item_summary($item):
-  if $item.type == "agent_message" then
-    lines("[assistant] "; $item.text)
-  elif $item.type == "reasoning" then
-    lines("[reasoning] "; ($item.text // $item.summary // $item.content // ""))
-  elif $item.type == "command_execution" then
-    "[cmd " + (($item.status // "event") | tostring) + "] " + (($item.command // "") | tostring)
-  elif $item.type == "mcp_tool_call" then
-    "[mcp " + (($item.status // "event") | tostring) + "] " + (($item.server // "mcp") | tostring) + "." + (($item.tool // $item.name // "tool") | tostring)
-  elif $item.type == "web_search" then
-    "[web search] " + (($item.query // $item.status // "event") | tostring)
-  elif $item.type == "file_change" then
-    "[file change] " + (($item.path // $item.status // "event") | tostring)
-  elif $item.type == "plan_update" then
-    "[plan] " + (($item.status // "updated") | tostring)
-  else
-    "[item " + (($item.type // "unknown") | tostring) + "] " + (($item.status // "event") | tostring)
-  end;
-
-fromjson? |
-  if . == null then
-    empty
-  elif .type == "thread.started" then
-    "[thread] " + (.thread_id // "started")
-  elif .type == "turn.started" then
-    "[turn] started"
-  elif .type == "turn.completed" then
-    "[result] success input=" + ((.usage.input_tokens // 0) | tostring) + " output=" + ((.usage.output_tokens // 0) | tostring) + " reasoning=" + ((.usage.reasoning_output_tokens // 0) | tostring)
-  elif .type == "turn.failed" then
-    "[result] failed"
-  elif .type == "error" then
-    lines("[agent error] "; (.message // .error // "unknown error"))
-  elif (.type | startswith("item.")) then
-    item_summary(.item)
-  else
-    empty
-  end
-JQ
 }
 
 update_comment_if_changed() {
@@ -566,9 +497,9 @@ extract_agent_result() {
   local agent="$1"
   local dir="$AGENTS_DIR/$agent"
   local skip_reason guide_url
-  local sources=("$dir/live-guide-url.txt" "$dir/$agent-stream.jsonl" "$dir/agent-output.txt" "$dir/agent-final.txt")
+  local sources=("$dir/live-guide-url.txt" "$dir/$agent-stream.jsonl" "$dir/agent-output.txt")
 
-  skip_reason="$(sed -nE 's/^(\[assistant\] )?SCRIMBA_PR_EXPLAINER_SKIP_REASON=//p' "$dir/agent-output.txt" "$dir/agent-final.txt" 2>/dev/null | tail -n 1)"
+  skip_reason="$(sed -nE 's/^(\[assistant\] )?SCRIMBA_PR_EXPLAINER_SKIP_REASON=//p' "$dir/agent-output.txt" 2>/dev/null | tail -n 1)"
   if [ -n "$skip_reason" ]; then
     printf '%s\n' "$skip_reason" > "$dir/skip-reason.txt"
   fi
@@ -615,30 +546,6 @@ run_agent() {
         | sed -u "s/^/[$agent] /"
       status="${PIPESTATUS[0]}"
       ;;
-    codex)
-      printf '%s' "$SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64" | base64 -d > "$CODEX_HOME_DIR/auth.json"
-      CODEX_HOME="$CODEX_HOME_DIR" codex exec \
-        --ephemeral \
-        --cd "$GITHUB_WORKSPACE" \
-        --sandbox danger-full-access \
-        --json \
-        --output-last-message "$dir/agent-final.txt" \
-        - \
-        < "$dir/prompt.md" \
-        2> >(tee "$dir/agent-stderr.txt" | sed -u "s/^/[$agent stderr] /" >&2) \
-        | tee "$dir/codex-stream.jsonl" \
-        | jq --unbuffered -Rr -f "$WORK_DIR/format-codex-stream.jq" \
-        | tee "$dir/agent-output.txt" \
-        | sed -u "s/^/[$agent] /"
-      status="${PIPESTATUS[0]}"
-      if [ -s "$dir/agent-final.txt" ]; then
-        {
-          echo
-          echo "----- final message -----"
-          cat "$dir/agent-final.txt"
-        } >> "$dir/agent-output.txt"
-      fi
-      ;;
     *)
       echo "::error::Unknown agent: $agent"
       status=1
@@ -650,9 +557,6 @@ run_agent() {
 
   if [ "$status" != "0" ]; then
     echo "Failed" > "$dir/status.txt"
-    if [ "$agent" = "codex" ] && grep -q "refresh_token_reused" "$dir/agent-stderr.txt" 2>/dev/null; then
-      echo "::error::The Codex auth secret is stale: its refresh token was already used. Codex refresh tokens are single-use, so any refresh by another copy of this auth.json (your local Codex CLI, or an earlier CI run) invalidates the stored secret. Re-run 'codex login --device-auth' and update SCRIMBA_PR_EXPLAINER_CODEX_AUTH_JSON_B64."
-    fi
   elif [ -s "$dir/skip-reason.txt" ]; then
     echo "Skipped" > "$dir/status.txt"
   elif [ -s "$dir/url.txt" ]; then
