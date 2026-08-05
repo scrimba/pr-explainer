@@ -203,17 +203,17 @@ npm pack --dry-run
 Generate an explainer for a local branch without GitHub:
 
 ```bash
-# current branch vs auto-detected base, streaming to a locally running Scrimba
-scripts/run-local.sh /path/to/repo --mcp-url http://localhost:3000/explain/mcp
+# current branch vs auto-detected base, on a locally running Scrimba
+scripts/run-local.sh /path/to/repo --scrimba-server=https://local.scrimba.tech:3009/
 
 # explicit base
-scripts/run-local.sh /path/to/repo --mcp-url http://localhost:3000/explain/mcp --base main
+scripts/run-local.sh /path/to/repo --scrimba-server=https://local.scrimba.tech:3009/ --base main
 ```
 
 The branch checked out in the target repo is treated as the PR head, and PR metadata is synthesized from git: the title comes from the first branch commit, the description from the commit messages. It runs the exact same prompts and agent invocation as the action — no PR comment is posted, and the explainer URL prints as soon as the stream starts.
 
 - Auth: uses your local Claude Code login, or `SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN` when set.
-- `--mcp-url` is required, so a local run never streams anywhere by accident. Point it at a locally running Scrimba (plain-http localhost URLs work), or pass the production URL (`https://scrimba.com/explain/mcp`) to deliberately create a real unlisted explainer.
+- `--scrimba-server` is required, so a local run never streams anywhere by accident. Give it the base URL of the Scrimba server (plain-http works too); the MCP path is derived from it. Pass `--scrimba-server=https://scrimba.com` to deliberately create a real unlisted explainer on production.
 - Prompts, agent streams, and the diff land in `.scrimba-pr-explainer/` inside the target repo — inspect them there, and delete the directory when done.
 
 Test unreleased changes from GitHub:
