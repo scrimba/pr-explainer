@@ -136,10 +136,14 @@ prepare_mcp_config() {
   MCP_URL="${SCRIMBA_PR_EXPLAINER_MCP_URL:-$DEFAULT_MCP_URL}"
   [ -n "$MCP_URL" ] || MCP_URL="$DEFAULT_MCP_URL"
 
-  local mcp_host mcp_host_re
+  local mcp_scheme mcp_host mcp_host_re
+  case "$MCP_URL" in
+    http://*) mcp_scheme="http" ;;
+    *) mcp_scheme="https" ;;
+  esac
   mcp_host="$(printf '%s' "$MCP_URL" | sed -E 's#^[A-Za-z]+://##; s#[/?].*$##')"
   mcp_host_re="$(printf '%s' "$mcp_host" | sed 's/\./\\./g')"
-  EXPLAINER_URL_REGEX="https://${mcp_host_re}/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?"
+  EXPLAINER_URL_REGEX="${mcp_scheme}://${mcp_host_re}/explain/[A-Za-z0-9_-]+(\?claim=[A-Za-z0-9_-]+)?"
 
   echo "$MCP_URL" > "$WORK_DIR/mcp-url.txt"
   log_status "Using Scrimba MCP URL: $MCP_URL"

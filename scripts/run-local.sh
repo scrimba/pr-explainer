@@ -8,24 +8,25 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/run-local.sh [path-to-repo] [--base <ref>]
+Usage: scripts/run-local.sh --mcp-url <url> [path-to-repo] [--base <ref>]
 
 Treats the currently checked-out branch of the target repo (default: the
 current directory) as a PR and generates a Scrimba explainer for it, using
 the exact same prompts and agent invocation as the GitHub Action.
 
 Options:
-  --base <ref>   Base to diff against. Defaults to origin's default branch
-                 when known, else main, else master.
+  --mcp-url <url>   Required. Scrimba MCP server to stream to, e.g.
+                    http://localhost:3000/explain/mcp for a locally running
+                    Scrimba, or https://scrimba.com/explain/mcp to
+                    deliberately create a real (unlisted) explainer on
+                    production.
+  --base <ref>      Base to diff against. Defaults to origin's default
+                    branch when known, else main, else master.
 
 Environment:
   SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN
                  Claude token to use. When unset, your local Claude Code
                  login is used.
-  SCRIMBA_PR_EXPLAINER_MCP_URL
-                 Scrimba MCP server to stream to. Defaults to production —
-                 note this creates a real (unlisted) explainer. Point it at
-                 a local or staging Scrimba to test end to end without that.
 
 Artifacts (prompts, agent streams, diff) land in .scrimba-pr-explainer/
 inside the target repo.
@@ -42,6 +43,10 @@ while [ $# -gt 0 ]; do
       BASE_REF="${2:?--base needs a ref}"
       shift 2
       ;;
+    --mcp-url)
+      export SCRIMBA_PR_EXPLAINER_MCP_URL="${2:?--mcp-url needs a URL}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -52,6 +57,12 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+if [ -z "${SCRIMBA_PR_EXPLAINER_MCP_URL:-}" ]; then
+  echo "Missing --mcp-url. Local runs must say where to stream the explainer," >&2
+  echo "e.g. --mcp-url http://localhost:3000/explain/mcp for a locally running Scrimba." >&2
+  exit 1
+fi
 
 cd "$REPO_PATH"
 git rev-parse --is-inside-work-tree >/dev/null
