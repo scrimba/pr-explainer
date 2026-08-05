@@ -159,12 +159,12 @@ EOF
 prepare_prompts() {
   mkdir -p "$AGENTS_DIR"
 
-  cat > "$WORK_DIR/prompt.base.md" <<'EOF'
+  cat > "$WORK_DIR/system-prompt.base.md" <<'EOF'
 You are creating a Scrimba PR Explainer: a short narrated video that helps human reviewers review a pull request well. The viewer is a busy teammate deciding whether to approve, what to push back on, and what to test. Every slide must either build their understanding of the change or sharpen their review.
 
 You are running inside a checkout of the repository at the PR merge commit.
 
-This prompt ends with the complete PR data: metadata, description, linked issues, and diffstat. The full unified diff is on disk at .scrimba-pr-explainer/pr.diff — read and search that file. Do not re-fetch any of this from GitHub.
+The user message contains the complete PR data: metadata, description, linked issues, and diffstat. The full unified diff is on disk at .scrimba-pr-explainer/pr.diff — read and search that file. Do not re-fetch any of this from GitHub.
 
 You also have the full repo, git history, the gh CLI, rg, and web search. Do not rely only on the diff: read the changed files as they exist at HEAD, the surrounding code, existing usage of touched functions, and nearby tests to reconstruct intent.
 
@@ -298,11 +298,11 @@ The say narration carries the review; visible text stays short and scannable.
 
 After finish_explainer_stream succeeds, end your final response with exactly:
 SCRIMBA_PR_EXPLAINER_URL=<url>
-
-Pull request data:
 EOF
 
   {
+    echo "Pull request data:"
+    echo
     jq -r '"PR #\(.number): \(.title)\nAuthor: \(.author.login)\nURL: \(.url)\nBase: \(.baseRefName) @ \(.baseRefOid)\nHead: \(.headRefName) @ \(.headRefOid)"' "$WORK_DIR/pr.json"
     echo
     echo "Description:"
@@ -314,17 +314,21 @@ EOF
     fi
     echo "Diffstat:"
     cat "$WORK_DIR/diffstat.txt"
-  } >> "$WORK_DIR/prompt.base.md"
+  } > "$WORK_DIR/prompt.user.md"
 
   for agent in "${RESOLVED_AGENTS[@]}"; do
     local dir="$AGENTS_DIR/$agent"
     mkdir -p "$dir"
-    sed "s#{{LIVE_GUIDE_URL_FILE}}#$dir/live-guide-url.txt#g" "$WORK_DIR/prompt.base.md" > "$dir/prompt.md"
+    sed "s#{{LIVE_GUIDE_URL_FILE}}#$dir/live-guide-url.txt#g" "$WORK_DIR/system-prompt.base.md" > "$dir/system-prompt.md"
+    cp "$WORK_DIR/prompt.user.md" "$dir/prompt.md"
     echo "Queued" > "$dir/status.txt"
     : > "$dir/url.txt"
     : > "$dir/skip-reason.txt"
 
-    echo "::group::Agent prompt ($agent)"
+    echo "::group::Agent system prompt ($agent)"
+    cat "$dir/system-prompt.md"
+    echo "::endgroup::"
+    echo "::group::Agent user prompt ($agent)"
     cat "$dir/prompt.md"
     echo "::endgroup::"
   done
@@ -588,6 +592,7 @@ run_agent() {
         --no-session-persistence \
         --strict-mcp-config \
         --mcp-config "$WORK_DIR/claude.mcp.json" \
+        --system-prompt-file "$dir/system-prompt.md" \
         --permission-mode dontAsk \
         --allowedTools "mcp__scrimba__start_explainer_stream,mcp__scrimba__append_explainer_chunk,mcp__scrimba__finish_explainer_stream,Read,Bash,WebFetch,WebSearch,Write" \
         < "$dir/prompt.md" \
