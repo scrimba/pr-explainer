@@ -198,6 +198,21 @@ npm run check
 npm pack --dry-run
 ```
 
+### Test locally
+
+Generate an explainer for a local branch without GitHub:
+
+```bash
+scripts/run-local.sh /path/to/repo              # current branch vs auto-detected base
+scripts/run-local.sh /path/to/repo --base main  # explicit base
+```
+
+The branch checked out in the target repo is treated as the PR head, and PR metadata is synthesized from git: the title comes from the first branch commit, the description from the commit messages. It runs the exact same prompts and agent invocation as the action — no PR comment is posted, and the explainer URL prints as soon as the stream starts.
+
+- Auth: uses your local Claude Code login, or `SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN` when set.
+- By default this streams to production Scrimba and creates a real unlisted explainer. Set `SCRIMBA_PR_EXPLAINER_MCP_URL` to point at a local or staging Scrimba instead.
+- Prompts, agent streams, and the diff land in `.scrimba-pr-explainer/` inside the target repo — inspect them there, and delete the directory when done.
+
 Test unreleased changes from GitHub:
 
 ```bash

@@ -586,7 +586,12 @@ run_agent() {
 
   case "$agent" in
     claude)
-      CLAUDE_CODE_OAUTH_TOKEN="$SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN" claude -p \
+      # In CI the secret is always set; local runs fall back to the
+      # machine's own Claude Code login when it is not.
+      if [ -n "${SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+        export CLAUDE_CODE_OAUTH_TOKEN="$SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"
+      fi
+      claude -p \
         --output-format stream-json \
         --verbose \
         --no-session-persistence \
@@ -707,4 +712,8 @@ main() {
   exit "$overall_status"
 }
 
-main "$@"
+# Allow scripts/run-local.sh to source this file for its functions without
+# running the CI entry point.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

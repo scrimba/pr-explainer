@@ -20,7 +20,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "check": "node --check bin/pr-explainer.js && bash -n scripts/run-action.sh"
+    "check": "node --check bin/pr-explainer.js && bash -n scripts/run-action.sh && bash -n scripts/run-local.sh"
   },
   "engines": {
     "node": ">=20.12"
