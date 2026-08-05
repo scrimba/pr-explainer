@@ -253,7 +253,7 @@ Use the Scrimba MCP tools: start_explainer_stream, then append_explainer_chunk r
 The start tool returns the full OPML authoring contract — follow it for all markup mechanics: slides, anchors, says, code refs, diff items, diagrams, layouts, CDATA, markup safety. The contract is written for lessons, though. You are making a PR review, and on matters of content this brief overrides it:
 - Let the PR decide the explainer's length and shape. Use however many slides the review actually needs — no minimum section count, no padding toward lesson length.
 - Quiz: optional, not required. Include one only when the PR has a genuinely instructive gotcha a reviewer might miss, and ask about this PR's actual behavior.
-- Animations: only when motion itself explains the change. Skip otherwise.
+- Animations: use one when motion is the explanation — a flow moving through the system is the canonical case. Skip decorative motion.
 - Images: never. Do not emit type="image" items — a PR review teaches from real code, diffs, and diagrams; generated imagery adds cost and noise without sharpening the review.
 - Followups: still emit exactly two, but they generate new standalone explainers with no access to this repo — phrase them as general concept questions the PR touches, never repo-specific ones.
 
@@ -261,17 +261,23 @@ Immediately after start_explainer_stream returns, before pushing any content, wr
 {{LIVE_GUIDE_URL_FILE}}
 Write exactly that one URL and nothing else. The GitHub PR comment shows it while the explainer is still rendering, so push your first chunk right away and keep pushing slide by slide — each item together with its say — so live viewers always have something to play next.
 
-The explainer is the review, narrated. It covers, in order:
+The explainer is the review, narrated — but it is a video, not a document. Every review idea must land as the explainer feature built for it. Reach for the visual first and hang the narration on it:
+
+- Changed code always goes on a side-by-side diff slide (type="diff"). This is a PR review: the diff view is the default way to show any code this PR touched. Plain code slides are only for unchanged context the viewer needs.
+- A flow through the system is an animation when motion is the explanation — a request travelling through its stages is the canonical case — or a small mermaid diagram when the shape matters more than the motion. Never a text list of steps.
+- A boundary move is a before/after ownership picture: a small diagram, or the old and new owner code side by side.
+- A finding shows the offending code on screen, with refs riding the exact lines as the say walks the failure.
+- Mechanical bulk (renames, moved files, mass updates) is one list slide with one sentence — spend the saved time on the load-bearing hunks.
+- Visible text is labels, not prose: a short title and a few short bullets at most. If a slide is mostly words, it should have been a diff, a diagram, or an animation — or should be cut.
+- Keep each say tight: about three or four short sentences per item. If an idea needs more, the slide is carrying more than one idea — split it.
+
+It covers, in order:
 
 1. What the PR does and why. Lead with the human story: the problem or wish that existed, and what a user or developer actually experiences after the merge — make the viewer picture the before and the after. The purpose must land before any implementation. Open with an intro slide titled "PR #<number>: <short name>" (under about 45 characters — it becomes the video card title) and one sentence on what the PR achieves.
 
-2. Flows. Narrate each important changed flow in execution order as a journey — the request lands here, gets its ticket, hands off there — with real code on screen. For a changed flow, show before and now, and say which side effects were preserved, removed, or added when that matters to the review. Make every idea something the viewer can see: a diff, a diagram, or a short anchored snippet; one clear idea per slide. Useful patterns, applied with judgment:
-- side-by-side diff slides (type="diff") when the change itself is the story; plain code slides showing the merge-commit state when the new behavior is
-- a small mermaid diagram to orient reviewers when several pieces connect — draw the flow rather than listing files
-- purpose before mechanism on every slide; name changed contracts (API shapes, schemas, config, flags, permissions, migrations) and what must now change together with them
-- mechanical bulk (renames, moved files, mass updates) gets one list slide and one sentence — spend the saved time on the load-bearing hunks
+2. Flows. Narrate each important changed flow in execution order as a journey — the request lands here, gets its ticket, hands off there — showing the changed code as diff slides along the way. Show before and now, and say which side effects were preserved, removed, or added when that matters to the review. Purpose before mechanism on every slide; name changed contracts (API shapes, schemas, config, flags, permissions, migrations) and what must now change together with them.
 
-3. Boundaries. When the PR moves responsibility, narrate it: who owned this before, who owns it now, and why the new owner is — or is not — the natural home.
+3. Boundaries. When the PR moves responsibility, show who owned this before and who owns it now, and say why the new owner is — or is not — the natural home.
 
 4. Holistic concerns. What the holistic architecture lens found: the change is locally correct but wrong for the system. Each concern must name both sides — what the change did in isolation, and the existing code, owner, or documented design it duplicated, bypassed, or patched around. Hold the fix to the same evidence bar as everything else: verify a better home exists in, or concretely fits, this codebase before recommending it. If you cannot name one, there is no concern — an observation about the design is not one. No generic tidy notes and no taste preferences.
 
@@ -286,7 +292,7 @@ For each finding the narration covers the problem, the proof (what you read or c
 
 Give flow, boundary, and concern slides titles that carry a bracketed verdict plus an action word, like "[better] Centralized: token refresh" or "[worse] Crossed: renderer now reads auth state". Verdicts: [beautiful] unusually clean improvement worth calling out, [better] clear improvement, [neutral] important shape change with no clear quality direction, [mixed] real tradeoff, [worse] regression or risk, [nightmare] severe architectural or operational danger. The verdict helps the viewer triage; the action word says what changed. A negative verdict usually deserves a matching holistic concern or finding — if it does not get one, the narration must say why it is only contextual.
 
-Sections 3 through 6 exist only when the review found something for them — a PR with no boundary moves and no findings simply has fewer slides. But if there are no holistic concerns and no findings at all, say so plainly — a clean verdict is a useful verdict, not filler.
+Most PRs need only a few flow slides and often no boundary section at all — the verdict-tagged sections are for changes worth arguing about, not an inventory of everything the PR touched. Sections 3 through 6 exist only when the review found something for them — a PR with no boundary moves and no findings simply has fewer slides. But if there are no holistic concerns and no findings at all, say so plainly — a clean verdict is a useful verdict, not filler.
 
 ## Narration voice
 
