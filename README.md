@@ -122,12 +122,6 @@ gh secret set SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN
 
 The installer does both of these for you when the Claude Code CLI and an authenticated GitHub CLI are available. If either is unavailable or you skip automatic setup, it prints the manual commands.
 
-## Codex
-
-Codex support has been removed for now. Subscription-based Codex auth cannot survive ephemeral CI runners: Codex refresh tokens are single-use, so a static copy of `~/.codex/auth.json` stored as a secret breaks as soon as any copy of it refreshes — your local Codex CLI, or a CI run after the session goes stale (roughly 8 days). OpenAI's own guidance for durable CI auth is API keys or a persistent `CODEX_HOME`.
-
-See https://github.com/scrimba/pr-explainer/issues/2 for the details and the plan to bring it back properly.
-
 ## Action Inputs
 
 These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
