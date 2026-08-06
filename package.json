@@ -1,6 +1,6 @@
 {
   "name": "pr-explainer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "type": "module",
   "description": "Create Scrimba PR explainers from GitHub Actions using Claude Code.",
