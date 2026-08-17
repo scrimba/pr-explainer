@@ -73,8 +73,8 @@ fi
 
 SCRIMBA_SERVER="$(printf '%s' "$SCRIMBA_SERVER" | sed 's#/*$##')"
 case "$SCRIMBA_SERVER" in
-  */explain/mcp) export SCRIMBA_PR_EXPLAINER_MCP_URL="$SCRIMBA_SERVER" ;;
-  *) export SCRIMBA_PR_EXPLAINER_MCP_URL="$SCRIMBA_SERVER/explain/mcp" ;;
+  */explain/pr/mcp) export SCRIMBA_PR_EXPLAINER_MCP_URL="$SCRIMBA_SERVER" ;;
+  *) export SCRIMBA_PR_EXPLAINER_MCP_URL="$SCRIMBA_SERVER/explain/pr/mcp" ;;
 esac
 
 cd "$REPO_PATH"

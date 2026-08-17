@@ -3,7 +3,7 @@ set -euo pipefail
 
 WORK_DIR=".scrimba-pr-explainer"
 AGENTS_DIR="$WORK_DIR/agents"
-DEFAULT_MCP_URL="https://scrimba.com/explain/mcp"
+DEFAULT_MCP_URL="https://scrimba.com/explain/pr/mcp"
 # Pinned to the MCP host in prepare_mcp_config so PR content cannot smuggle a
 # foreign explainer URL into the comment.
 EXPLAINER_URL_REGEX=""
