@@ -572,7 +572,13 @@ run_agent() {
       if [ -n "${SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
         export CLAUDE_CODE_OAUTH_TOKEN="$SCRIMBA_PR_EXPLAINER_CLAUDE_CODE_OAUTH_TOKEN"
       fi
+      # An empty model leaves the choice to the Claude Code CLI default.
+      model_args=()
+      if [ -n "${SCRIMBA_PR_EXPLAINER_MODEL:-}" ]; then
+        model_args=(--model "$SCRIMBA_PR_EXPLAINER_MODEL")
+      fi
       claude -p \
+        ${model_args[@]+"${model_args[@]}"} \
         --output-format stream-json \
         --verbose \
         --no-session-persistence \
