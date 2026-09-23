@@ -131,6 +131,7 @@ These are `with:` inputs on `uses: scrimba/pr-explainer@<ref>`.
 | `agents` | `""` | Agents to run. Only `claude` is currently supported; empty defaults to `claude`. |
 | `pr-number` | `""` | PR number to explain. Empty resolves the PR from the triggering event. |
 | `allow-forks` | `"false"` | Set to `true` to allow PR explainers on fork PRs. |
+| `model` | `""` | Claude model to run, such as `opus` or `claude-opus-5-5`. Empty uses the Claude Code CLI default. |
 
 ## Secrets
 

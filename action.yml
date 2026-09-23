@@ -14,6 +14,10 @@ inputs:
     description: Set to true to allow PR explainers on fork PRs.
     required: false
     default: "false"
+  model:
+    description: Claude model to run, such as opus or claude-opus-5-5. Empty uses the Claude Code CLI default.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -52,4 +56,5 @@ runs:
         SCRIMBA_PR_EXPLAINER_AGENTS: ${{ inputs.agents }}
         SCRIMBA_PR_EXPLAINER_PR_NUMBER: ${{ inputs.pr-number }}
         SCRIMBA_PR_EXPLAINER_ALLOW_FORKS: ${{ inputs.allow-forks }}
+        SCRIMBA_PR_EXPLAINER_MODEL: ${{ inputs.model }}
       run: "$GITHUB_ACTION_PATH/scripts/run-action.sh"
